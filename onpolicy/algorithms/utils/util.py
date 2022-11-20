@@ -15,3 +15,19 @@ def get_clones(module, N):
 def check(input):
     output = torch.from_numpy(input) if type(input) == np.ndarray else input
     return output
+
+def complete_graph_edge_index(num_nodes):
+    """ 
+    function to generate the edge index of a complete graph given the number of nodes 
+    """
+    # empty list to store edge index
+    edge_index = []
+
+    # iterate over num_nodes
+    for i in range(num_nodes):
+        # iterate over num_nodes
+        for j in range(num_nodes):
+            # append edge index
+            edge_index.append([i, j])
+
+    return np.array(edge_index)

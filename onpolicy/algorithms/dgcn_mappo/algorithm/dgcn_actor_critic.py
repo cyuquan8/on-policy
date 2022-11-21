@@ -126,7 +126,7 @@ class DGCNActor(nn.Module):
         self._use_orthogonal = args.use_orthogonal
         self._use_policy_active_masks = args.use_policy_active_masks
         self.tpdv = dict(dtype=torch.float32, device=device)
-
+        self.device = device
 
         self.num_agents = args.num_agents
         self.n_rollout_threads = args.n_rollout_threads
@@ -210,7 +210,7 @@ class DGCNActor(nn.Module):
             else:
                 # obtain edge index
                 edge_index = complete_graph_edge_index(self.num_agents) 
-                edge_index = torch.tensor(edge_index, dtype = torch.long).t().contiguous()
+                edge_index = torch.tensor(edge_index, dtype = torch.long, device=self.device).t().contiguous()
 
             # observation per env (shape: [num_agents, obs_dims])
             obs_env = obs[i]

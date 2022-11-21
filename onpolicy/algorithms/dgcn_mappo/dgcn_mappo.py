@@ -5,7 +5,7 @@ from onpolicy.utils.util import get_gard_norm, huber_loss, mse_loss
 from onpolicy.utils.valuenorm import ValueNorm
 from onpolicy.algorithms.utils.util import check
 
-class R_MAPPO():
+class DGCN_MAPPO():
     """
     Trainer class for MAPPO to update policies.
     :param args: (argparse.Namespace) arguments containing relevant model, policy, and env information.

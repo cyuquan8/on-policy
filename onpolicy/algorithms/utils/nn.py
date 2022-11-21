@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch_geometric.nn as gnn
 
 from functools import partial
-from dgcn import DGCNConv
+from onpolicy.algorithms.utils.dgcn import DGCNConv
 
 def activation_function(activation):
     """
@@ -85,7 +85,7 @@ class MLPBlock(nn.Module):
         # activation function for after batch norm
         self.activation_func = activation_func 
         # dropout probablity
-        self.dropout_p = dropout_p
+        self.dropout_p = kwargs['dropout_p']
 
         # basic fc_block. inpuit --> linear --> batch norm --> activation function --> dropout 
         self.block = nn.Sequential(
@@ -113,7 +113,7 @@ class DGCNBlock(nn.Module):
     class to build DGCNBlock 
     """
 
-    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
+    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True, weight_initialisation=None,activation_func =None):
         """ 
         class constructor for attributes of the DGCNBlock 
         """
@@ -151,7 +151,7 @@ class DGCNBlock(nn.Module):
                                                   negative_slope = negative_slope, dropout = dropout, add_self_loops = add_self_loops, edge_dim = edge_dim, fill_value = fill_value, bias = bias), 
                                          'x, edge_index -> x'), 
                                         # graph norm
-                                        (gnn.GraphNorm(self.output_channels * self.num_heads if concat == True else self.output_channels), 'x -> x')
+                                        (gnn.GraphNorm(self.output_channels * self.att_heads if concat == True else self.output_channels), 'x -> x')
                                     ]
         )  
 
@@ -227,7 +227,6 @@ class NNLayers(nn.Module):
         # output channels/shape
         self.output_channels = output_channels
         self.input_output_list = list(zip(output_channels[:], output_channels[1:]))
-        
         # module list of layers with same args and kwargs
         self.blocks = nn.ModuleList([
             self.block(self.input_channels, self.output_channels[0], *args, **kwargs),
@@ -254,7 +253,8 @@ class DGCNLayers(NNLayers):
         class constructor for attributes of DGCNLayers 
         """
         # inherit class constructor attributes from nn_layers
-        super().__init__(self, input_channels, block, output_channels, *args, **kwargs)
+
+        super().__init__(input_channels, block, output_channels, *args, **kwargs)
 
     def forward(self, x, *args, **kwargs):
         """ 

@@ -32,11 +32,10 @@ class SMACRunner(Runner):
                     
                 # Obser reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
-
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, \
-                       rnn_states, rnn_states_critic 
-                
+                       rnn_states, rnn_states_critic
+
                 # insert data into buffer
                 self.insert(data)
 
@@ -110,6 +109,7 @@ class SMACRunner(Runner):
     @torch.no_grad()
     def collect(self, step):
         self.trainer.prep_rollout()
+
         value, action, action_log_prob, rnn_state, rnn_state_critic \
             = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
                                             np.concatenate(self.buffer.obs[step]),

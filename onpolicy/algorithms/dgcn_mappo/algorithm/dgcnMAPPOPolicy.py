@@ -1,5 +1,5 @@
 import torch
-from onpolicy.algorithms.dgcn_mappo.algorithm.dgcn_actor_critic import DGCN_Actor, R_Critic
+from onpolicy.algorithms.dgcn_mappo.algorithm.dgcn_actor_critic import DGCNActor, R_Critic
 from onpolicy.utils.util import update_linear_schedule
 
 
@@ -25,7 +25,7 @@ class DGCN_MAPPOPolicy:
         self.share_obs_space = cent_obs_space
         self.act_space = act_space
 
-        self.actor = DGCN_Actor(args, self.obs_space, self.act_space, self.device)
+        self.actor = DGCNActor(args, self.obs_space, self.act_space, self.device)
         self.critic = R_Critic(args, self.share_obs_space, self.device)
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),

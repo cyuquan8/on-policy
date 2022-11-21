@@ -5,7 +5,7 @@ from onpolicy.algorithms.utils.cnn import CNNBase
 from onpolicy.algorithms.utils.mlp import MLPBase
 from onpolicy.algorithms.utils.rnn import RNNLayer
 from onpolicy.algorithms.utils.act import ACTLayer
-from onpolicy.algorithms.utils.nn import DGCNLayers, MLPBlock, NNLayers
+from onpolicy.algorithms.utils.nn import DGCNLayers, MLPBlock, NNLayers, DGCNBlock
 from onpolicy.algorithms.utils.popart import PopArt
 from onpolicy.utils.util import get_shape_from_obs_space
 
@@ -127,42 +127,44 @@ class DGCNActor(nn.Module):
         self._use_policy_active_masks = args.use_policy_active_masks
         self.tpdv = dict(dtype=torch.float32, device=device)
 
+
         self.num_agents = args.num_agents
         self.n_rollout_threads = args.n_rollout_threads
         self.dgcn_output_dims = args.dgcn_output_dims
-        self.n_dgcn_layers = arg.n_dgcn_layers
-        self.num_somu_lstm = arg.num_somu_lstm
-        self.num_scmu_lstm = arg.num_scmu_lstm
-        self.somu_lstm_hidden_size = arg.somu_lstm_hidden_size
-        self.scmu_lstm_hidden_size = arg.scmu_lstm_hidden_size
+        self.n_dgcn_layers = args.n_dgcn_layers
+        self.num_somu_lstm = args.num_somu_lstm
+        self.num_scmu_lstm = args.num_scmu_lstm
+        self.somu_lstm_hidden_size = args.somu_lstm_hidden_size
+        self.scmu_lstm_hidden_size = args.scmu_lstm_hidden_size
         self.somu_multi_att_num_heads = args.somu_multi_att_num_heads
         self.scmu_multi_att_num_heads = args.scmu_multi_att_num_heads
-        self.actor_fc_output_dims = arg.actor_fc_output_dims
+        self.actor_fc_output_dims = args.actor_fc_output_dims
         self.n_actor_layers = args.n_actor_layers
 
         obs_shape = get_shape_from_obs_space(obs_space)
-
+        self.obs_dims = obs_shape[0]
         # model architecture for mappo dgcn actor
 
         # dgcn layers
-        self.dgcn_layers = DGCNLayers(input_channels=obs_shape, block=DGCNBlock, output_channels=[self.dgcn_output_dims for self.n_dgcn_layers], activation_func="relu", weight_initialisation="default")
+
+        self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims, block=DGCNBlock, output_channels=[self.dgcn_output_dims for i in range(self.n_dgcn_layers)], activation_func="relu", weight_initialisation="default")
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
-        self.somu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=obs_shape, hidden_size=self.somu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0) for _ in range(self.num_somu_lstm)]) for _ in range(self.num_agents)]
+        self.somu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=self.obs_dims, hidden_size=self.somu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0) for _ in range(self.num_somu_lstm)]) for _ in range(self.num_agents)]
 
         # list of lstms for self communication memory unit (scmu) for each agent
         # somu_lstm_input_size is the last layer of dgcn layer
-        self.scmu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=dgcn_output_dims, hidden_size=self.scmu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0) for _ in range(self.num_scmu_lstm)]) 
+        self.scmu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=self.dgcn_output_dims, hidden_size=self.scmu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0) for _ in range(self.num_scmu_lstm)])
                                for _ in range(self.num_agents)]
 
         # weights to generate query, key and value for somu and scmu for each agent
         self.somu_query_layer_list = [MLPBlock(input_shape=self.somu_lstm_hidden_size, output_shape=self.somu_lstm_hidden_size, activation_func="relu", dropout_p= 0, weight_initialisation="default") for _ in range(self.num_agents)]  
         self.somu_key_layer_list = [MLPBlock(input_shape=self.somu_lstm_hidden_size, output_shape=self.somu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)] 
         self.somu_value_layer_list = [MLPBlock(input_shape=self.somu_lstm_hidden_size, output_shape=self.somu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)] 
-        self.scmu_query_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)] 
-        self.scmu_key_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)] 
-        self.scmu_value_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)] 
+        self.scmu_query_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)]
+        self.scmu_key_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)]
+        self.scmu_value_layer_list = [MLPBlock(input_shape=self.scmu_lstm_hidden_size, output_shape=self.scmu_lstm_hidden_size, activation_func="relu", dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)]
 
         # multi-head self attention layer for somu and scmu to selectively choose between the lstms outputs
         self.somu_multi_att_layer_list = [nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, num_heads=self.somu_multi_att_num_heads, dropout=0, batch_first=True) for _ in range(self.num_agents)]
@@ -171,8 +173,8 @@ class DGCNActor(nn.Module):
         # hidden fc layers for to generate actions for each agent
         # input channels are observations + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer and last layer of dgcn
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.actor_fc_layers_list = nn.ModuleList([NNLayers(input_channels=self.obs_dims + self.num_somu_lstm * self.somu_lstm_hidden_size + self.num_scmu_lstm * self.scmu_lstm_hidden_size + self.dgcn_output_dims, block=MLPBlock, 
-                                                   output_channels=[self.actor_fc_output_dims for self.n_actor_layers], activation_func='relu', dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)])
+        self.actor_fc_layers_list = nn.ModuleList([NNLayers(input_channels=self.obs_dims + self.num_somu_lstm * self.somu_lstm_hidden_size + self.num_scmu_lstm * self.scmu_lstm_hidden_size + self.dgcn_output_dims, block=MLPBlock,
+                                                   output_channels=[self.actor_fc_output_dims for i in range(self.n_actor_layers)], activation_func='relu', dropout_p=0, weight_initialisation="default") for _ in range(self.num_agents)])
 
         # final action layer for each agent
         self.act_list = nn.ModuleList([ACTLayer(action_space, self.actor_fc_output_dims, self._use_orthogonal, self._gain) for _ in range(self.num_agents)])
@@ -180,7 +182,7 @@ class DGCNActor(nn.Module):
         self.to(device)
         
     def forward(self, obs, available_actions=None, deterministic=False, knn=False):
-       """
+        """
         Compute actions from the given inputs.
         :param obs: (np.ndarray / torch.Tensor) observation inputs into network.
         :param available_actions: (np.ndarray / torch.Tensor) denotes which actions are available to agent
@@ -208,7 +210,7 @@ class DGCNActor(nn.Module):
             else:
                 # obtain edge index
                 edge_index = complete_graph_edge_index(self.num_agents) 
-                edge_index = torch.tensor(edge_index, dtype = T.long).t().contiguous()
+                edge_index = torch.tensor(edge_index, dtype = torch.long).t().contiguous()
 
             # observation per env (shape: [num_agents, obs_dims])
             obs_env = obs[i]
@@ -306,7 +308,7 @@ class DGCNActor(nn.Module):
             else:
                 # obtain edge index
                 edge_index = complete_graph_edge_index(self.num_agents) 
-                edge_index = torch.tensor(edge_index, dtype = T.long).t().contiguous()
+                edge_index = torch.tensor(edge_index, dtype = torch.long).t().contiguous()
 
             # observation per env (shape: [num_agents, obs_dims])
             obs_env = obs[i]
@@ -357,7 +359,7 @@ class DGCNActor(nn.Module):
                 # output --> actor_fc_layers (shape: [1, actor_fc_output_dims])
                 output = self.actor_fc_layers(output)
                 # actor_fc_layers --> act (shape: [1, action_space_dim])
-                action_log_probs, dist_entropy = self.act_list[j].evaluate_actions(output, actions[i, j], available_actions[i, j], active_masks = active_masks[i, j] if self._use_policy_active_masks else None)
+                action_log_probs, dist_entropy = self.act_list[j].evaluate_actions(output, self.actions[i, j], available_actions[i, j], active_masks = active_masks[i, j] if self._use_policy_active_masks else None)
                 # append to actions_list and action_log_probs_list
                 action_log_probs_list[i].append(action_log_probs)
                 dist_entropy_list[i].append(dist_entropy)
@@ -368,6 +370,7 @@ class DGCNActor(nn.Module):
 
         # (shape: [n_rollout_threads * num_agents, action_space_dim])
         return torch.cat(action_log_probs_list, dim=0), torch.cat(dist_entropy_list, dim=0)
+
 
 class R_Critic(nn.Module):
     """

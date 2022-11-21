@@ -524,7 +524,6 @@ class StarCraft2Env(MultiAgentEnv):
 
                 local_obs = self.stacked_local_obs.reshape(self.n_agents, -1)
                 global_state = self.stacked_global_state.reshape(self.n_agents, -1)
-
             return local_obs, global_state, [[0]]*self.n_agents, dones, infos, available_actions
 
         self._total_steps += 1

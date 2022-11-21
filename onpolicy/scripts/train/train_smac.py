@@ -65,7 +65,16 @@ def parse_args(args, parser):
     parser.add_argument("--use_state_agent", action='store_false', default=True)
     parser.add_argument("--use_mustalive", action='store_false', default=True)
     parser.add_argument("--add_center_xy", action='store_false', default=True)
-
+    parser.add_argument("--dgcn_output_dims", type=int, default=128)
+    parser.add_argument("--n_dgcn_layers", type=int, default=3)
+    parser.add_argument("--num_somu_lstm", type=int, default=3)
+    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128)
+    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2)
+    parser.add_argument("--num_scmu_lstm", type=int, default=2)
+    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128)
+    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2)
+    parser.add_argument("--actor_fc_output_dims", type=int, default=128)
+    parser.add_argument("--n_actor_layers", type=int, default=3)
     all_args = parser.parse_known_args(args)[0]
 
     return all_args
@@ -86,6 +95,9 @@ def main(args):
     elif all_args.algorithm_name == "ippo":
         print("u are choosing to use ippo, we set use_centralized_V to be False")
         all_args.use_centralized_V = False
+    elif all_args.algorithm_name == "mappo_gnn":
+        print("u are choosing to use mappo_gnn, we set use_centralized_V to be True")
+        all_args.use_centralized_V = True
     else:
         raise NotImplementedError
 
@@ -157,7 +169,9 @@ def main(args):
     }
 
     # run experiments
-    if all_args.share_policy:
+    if all_args.algorithm_name == "mappo_gnn":
+        from onpolicy.runner.shared.gnn_smac_runner import SMACRunner as Runner
+    elif all_args.share_policy:
         from onpolicy.runner.shared.smac_runner import SMACRunner as Runner
     else:
         from onpolicy.runner.separated.smac_runner import SMACRunner as Runner

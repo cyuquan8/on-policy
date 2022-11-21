@@ -360,7 +360,7 @@ class DGCNConv(MessagePassing):
         # obtain current node embedding: [num_nodes, num_layers, channels] --> [num_nodes, channels]
         x_curr = torch.squeeze(x[:, -1:], 1)
         # pass current node embedding to lin layer 
-        x_curr = self.lin(x_curr).view(-1, self.heads, self.out_channels)
+        x_curr = self.lin(x_curr).view(-1, self.att_heads, self.out_channels)
 
         # check to add self_loops to edge indexes
         if self.add_self_loops:
@@ -385,7 +385,7 @@ class DGCNConv(MessagePassing):
         # check if outputs are concatenated
         if self.concat:
             # concatenate outputs
-            out = out.view(-1, self.heads * self.out_channels)
+            out = out.view(-1, self.att_heads * self.out_channels)
         # mean
         else:
             # obtain mean across heads

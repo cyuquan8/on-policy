@@ -64,6 +64,7 @@ class R_MAPPOPolicy:
         :return rnn_states_actor: (torch.Tensor) updated actor network RNN states.
         :return rnn_states_critic: (torch.Tensor) updated critic network RNN states.
         """
+        print(obs.shape)
         actions, action_log_probs, rnn_states_actor = self.actor(obs,
                                                                  rnn_states_actor,
                                                                  masks,

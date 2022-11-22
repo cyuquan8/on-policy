@@ -358,7 +358,7 @@ class DGCNConv(MessagePassing):
             raise ValueError('Feature shape must be [num_nodes, num_layers, channels].')
 
         # obtain current node embedding: [num_nodes, num_layers, channels] --> [num_nodes, channels]
-        x_curr = torch.squeeze(x[:, -1:], 1)
+        x_curr = x[:, -1]
         # pass current node embedding to lin layer 
         x_curr = self.lin(x_curr).view(-1, self.att_heads, self.out_channels)
 
@@ -370,10 +370,10 @@ class DGCNConv(MessagePassing):
             edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
             # add self loops and correspoding edge attributes of self loops
             edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value = self.fill_value, num_nodes = num_nodes)
-
+        
         # set first pass boolean
         self.first_prop = True
-        # first propagate based on gatv2 on current node embeddings
+        # first propagate based on gatv2 on current node embeddings: [num_nodes, num_heads, channels]
         out = self.propagate(edge_index, x = None, x_layer = x_curr, edge_attr = edge_attr, size = None)
         # set first pass boolean
         self.first_prop = False
@@ -384,19 +384,19 @@ class DGCNConv(MessagePassing):
 
         # check if outputs are concatenated
         if self.concat:
-            # concatenate outputs
+            # concatenate outputs: [num_nodes, num_heads, channels]
             out = out.view(-1, self.att_heads * self.out_channels)
         # mean
         else:
-            # obtain mean across heads
+            # obtain mean across heads: [num_nodes, channels]
             out = out.mean(dim = 1)
 
         # add bias if its exist
         if self.bias is not None:
             out += self.bias
-
+        
         # second propagate based on dna on all layers of node beddings and output of first propagation from gatv2
-        out = self.propagate(edge_index, x = x, x_curr = out, edge_attr = edge_attr, size = None)
+        out = self.propagate(edge_index, x = x, x_layer = out, edge_attr = edge_attr, size = None)
 
         # check if there is need to return attention weights
         if isinstance(return_attention_weights, bool):
@@ -413,6 +413,7 @@ class DGCNConv(MessagePassing):
         if self.first_prop == True:
             # concatenate source and target embeddings
             x_curr = x_layer_i + x_layer_j
+            
             # check if there are edge attributes
             if edge_attr is not None:
                 # check dimensions of edge dimensions
@@ -427,7 +428,7 @@ class DGCNConv(MessagePassing):
                 edge_attr = edge_attr.view(-1, self.heads, self.out_channels)
                 # concatenate to node embeddings
                 x_curr += edge_attr
-
+    
             # pass node embeddings through leaky relu
             x_curr = F.leaky_relu(x_curr, self.negative_slope)
             # multiply by node independent parameter layer. sum over out_channels with shape [num_edges, num_heads]
@@ -438,7 +439,8 @@ class DGCNConv(MessagePassing):
             self._alpha = alpha
             # apply dropout to attention weights
             alpha = F.dropout(alpha, p = self.dropout, training = self.training)
-            # apply attention weights to target nodes: [num_edges, num_heads, out_channels] * [num_edges, num_heads, 1]
+            
+            # apply attention weights to target nodes: [num_edges, num_heads, out_channels] * [num_edges, num_heads, 1] --> [num_edges, num_heads, out_channels]
             return x_layer_j * alpha.unsqueeze(-1)
         # second propagation
         else:

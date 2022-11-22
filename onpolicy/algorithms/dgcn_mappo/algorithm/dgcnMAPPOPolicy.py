@@ -114,7 +114,6 @@ class DGCN_MAPPOPolicy:
         """
         Compute actions using the given inputs.
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param rnn_states_actor: (np.ndarray) if actor is RNN, RNN states for actor.
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
                                   (if None, all actions available)

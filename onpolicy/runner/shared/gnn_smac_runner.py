@@ -15,6 +15,7 @@ class SMACRunner(Runner):
 
     def __init__(self, config):
         super(SMACRunner, self).__init__(config)
+
         from onpolicy.algorithms.dgcn_mappo.dgcn_mappo import DGCN_MAPPO as TrainAlgo
         from onpolicy.algorithms.dgcn_mappo.algorithm.dgcnMAPPOPolicy import DGCN_MAPPOPolicy as Policy
         share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else \
@@ -56,12 +57,12 @@ class SMACRunner(Runner):
 
             for step in range(self.episode_length):
                 # Sample actions
-                values, actions, action_log_probs = self.collect(step)
+                values, actions, action_log_probs, rnn_states_critic = self.collect(step)
 
                 # Obser reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
-                       values, actions, action_log_probs
+                       values, actions, action_log_probs, rnn_states_critic
 
                 # insert data into buffer
                 self.insert(data)
@@ -138,29 +139,31 @@ class SMACRunner(Runner):
     @torch.no_grad()
     def collect(self, step):
         self.trainer.prep_rollout()
-        print(np.concatenate(self.buffer.obs[step]).shape)
 
-        value, action, action_log_prob \
+        value, action, action_log_prob, rnn_state_critic\
             = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
                                               np.concatenate(self.buffer.obs[step]),
+                                              np.concatenate(self.buffer.rnn_states_critic[step]),
                                               np.concatenate(self.buffer.masks[step]),
                                               np.concatenate(self.buffer.available_actions[step]))
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
         action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
+        rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
 
-        return values, actions, action_log_probs
+        return values, actions, action_log_probs, rnn_states_critic
 
     def insert(self, data):
         obs, share_obs, rewards, dones, infos, available_actions, \
-        values, actions, action_log_probs = data
+        values, actions, action_log_probs, rnn_states_critic = data
 
         dones_env = np.all(dones, axis=1)
 
 
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
+        rnn_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
 
         active_masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         active_masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
@@ -173,7 +176,7 @@ class SMACRunner(Runner):
         if not self.use_centralized_V:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs,
+        self.buffer.insert(share_obs, obs, rnn_states_critic,
                            actions, action_log_probs, values, rewards, masks, bad_masks, active_masks,
                            available_actions)
 
@@ -202,7 +205,6 @@ class SMACRunner(Runner):
             self.trainer.prep_rollout()
             eval_actions = \
                 self.trainer.policy.act(np.concatenate(eval_obs),
-                                        np.concatenate(eval_masks),
                                         np.concatenate(eval_available_actions),
                                         deterministic=True)
             eval_actions = np.array(np.split(_t2n(eval_actions), self.n_eval_rollout_threads))

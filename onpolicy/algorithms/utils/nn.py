@@ -113,7 +113,8 @@ class DGCNBlock(nn.Module):
     class to build DGCNBlock 
     """
 
-    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True, weight_initialisation=None,activation_func =None):
+    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True, 
+                 weight_initialisation=None,activation_func =None):
         """ 
         class constructor for attributes of the DGCNBlock 
         """

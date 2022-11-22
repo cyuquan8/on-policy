@@ -74,7 +74,27 @@ def get_config():
             The number of recurrent layers ( default 1).
         --data_chunk_length <int>
             Time length of chunks used to train a recurrent_policy, default 10.
-    
+
+    DGCN network parameters:
+        --n_dgcn_layers <int>
+            Number of DGCN layers for DGCN actor network, (default: 3)
+        --num_somu_lstm <int>
+            Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 2)
+        --somu_lstm_hidden_size <int>
+            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 128)
+        --somu_multi_att_num_heads <int>
+            Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network, (default: 2)
+        --num_scmu_lstm
+            Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 2)
+        --scmu_lstm_hidden_size
+            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network, (default: 128)
+        --scmu_multi_att_num_heads
+            Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network, (default: 2)
+        --actor_fc_output_dims
+            Hidden Size for MLP layers in DGCN actor network, (default: 128)
+        --n_actor_layers
+            Number of MLP layers in DGCN actor network, (default: 2)
+
     Optimizer parameters:
         --lr <float>
             learning rate parameter,  (default: 5e-4, fixed).
@@ -210,6 +230,17 @@ def get_config():
                         help="Whether to use Orthogonal initialization for weights and 0 initialization for biases")
     parser.add_argument("--gain", type=float, default=0.01,
                         help="The gain # of last action layer")
+
+    # dgcn network parameters
+    parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor network")
+    parser.add_argument("--num_somu_lstm", type=int, default=2, help="Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network")
+    parser.add_argument("--num_scmu_lstm", type=int, default=2, help="Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network")
+    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
+    parser.add_argument("--actor_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor network")
+    parser.add_argument("--n_actor_layers", type=int, default=2, help="Number of MLP layers in DGCN actor network")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

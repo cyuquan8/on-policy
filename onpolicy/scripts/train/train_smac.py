@@ -65,16 +65,7 @@ def parse_args(args, parser):
     parser.add_argument("--use_state_agent", action='store_false', default=True)
     parser.add_argument("--use_mustalive", action='store_false', default=True)
     parser.add_argument("--add_center_xy", action='store_false', default=True)
-    parser.add_argument("--dgcn_output_dims", type=int, default=128)
-    parser.add_argument("--n_dgcn_layers", type=int, default=3)
-    parser.add_argument("--num_somu_lstm", type=int, default=3)
-    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128)
-    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2)
-    parser.add_argument("--num_scmu_lstm", type=int, default=2)
-    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128)
-    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2)
-    parser.add_argument("--actor_fc_output_dims", type=int, default=128)
-    parser.add_argument("--n_actor_layers", type=int, default=3)
+  
     all_args = parser.parse_known_args(args)[0]
 
     return all_args

@@ -15,6 +15,8 @@ class SharedGNNReplayBuffer(object):
     def __init__(self, args, num_agents, obs_space, cent_obs_space, act_space):
         self.episode_length = args.episode_length
         self.n_rollout_threads = args.n_rollout_threads
+        self.hidden_size = args.hidden_size
+        self.recurrent_N = args.recurrent_N
         self.gamma = args.gamma
         self.gae_lambda = args.gae_lambda
         self._use_gae = args.use_gae
@@ -34,6 +36,10 @@ class SharedGNNReplayBuffer(object):
         self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *share_obs_shape),
                                   dtype=np.float32)
         self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
+
+        self.rnn_states_critic = np.zeros(
+            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.recurrent_N, self.hidden_size),
+            dtype=np.float32)
 
         self.value_preds = np.zeros(
             (self.episode_length + 1, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
@@ -60,12 +66,13 @@ class SharedGNNReplayBuffer(object):
 
         self.step = 0
 
-    def insert(self, share_obs, obs, actions, action_log_probs, value_preds, rewards, masks, bad_masks=None, active_masks=None, 
+    def insert(self, share_obs, obs, rnn_states_critic, actions, action_log_probs, value_preds, rewards, masks, bad_masks=None, active_masks=None, 
                available_actions=None):
         """
         Insert data into the buffer.
         :param share_obs: (argparse.Namespace) arguments containing relevant model, policy, and env information.
         :param obs: (np.ndarray) local agent observations.
+        :param rnn_states_critic: (np.ndarray) RNN states for critic network.
         :param actions:(np.ndarray) actions taken by agents.
         :param action_log_probs:(np.ndarray) log probs of actions taken by agents
         :param value_preds: (np.ndarray) value function prediction at each step.
@@ -77,6 +84,7 @@ class SharedGNNReplayBuffer(object):
         """
         self.share_obs[self.step + 1] = share_obs.copy()
         self.obs[self.step + 1] = obs.copy()
+        self.rnn_states_critic[self.step + 1] = rnn_states_critic.copy()
         self.actions[self.step] = actions.copy()
         self.action_log_probs[self.step] = action_log_probs.copy()
         self.value_preds[self.step] = value_preds.copy()
@@ -91,12 +99,13 @@ class SharedGNNReplayBuffer(object):
 
         self.step = (self.step + 1) % self.episode_length
 
-    def chooseinsert(self, share_obs, obs, actions, action_log_probs, value_preds, rewards, masks, bad_masks=None, active_masks=None, 
+    def chooseinsert(self, share_obs, obs, rnn_states_critic, actions, action_log_probs, value_preds, rewards, masks, bad_masks=None, active_masks=None, 
                      available_actions=None):
         """
         Insert data into the buffer. This insert function is used specifically for Hanabi, which is turn based.
         :param share_obs: (argparse.Namespace) arguments containing relevant model, policy, and env information.
         :param obs: (np.ndarray) local agent observations.
+        :param rnn_states_critic: (np.ndarray) RNN states for critic network.
         :param actions:(np.ndarray) actions taken by agents.
         :param action_log_probs:(np.ndarray) log probs of actions taken by agents
         :param value_preds: (np.ndarray) value function prediction at each step.
@@ -108,6 +117,7 @@ class SharedGNNReplayBuffer(object):
         """
         self.share_obs[self.step] = share_obs.copy()
         self.obs[self.step] = obs.copy()
+        self.rnn_states_critic[self.step + 1] = rnn_states_critic.copy()
         self.actions[self.step] = actions.copy()
         self.action_log_probs[self.step] = action_log_probs.copy()
         self.value_preds[self.step] = value_preds.copy()
@@ -126,6 +136,7 @@ class SharedGNNReplayBuffer(object):
         """Copy last timestep data to first index. Called after update to model."""
         self.share_obs[0] = self.share_obs[-1].copy()
         self.obs[0] = self.obs[-1].copy()
+        self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
         self.masks[0] = self.masks[-1].copy()
         self.bad_masks[0] = self.bad_masks[-1].copy()
         self.active_masks[0] = self.active_masks[-1].copy()
@@ -134,6 +145,7 @@ class SharedGNNReplayBuffer(object):
 
     def chooseafter_update(self):
         """Copy last timestep data to first index. This method is used for Hanabi."""
+        self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
         self.masks[0] = self.masks[-1].copy()
         self.bad_masks[0] = self.bad_masks[-1].copy()
 
@@ -220,6 +232,7 @@ class SharedGNNReplayBuffer(object):
 
         share_obs = self.share_obs[:-1].reshape(-1, *self.share_obs.shape[3:])
         obs = self.obs[:-1].reshape(-1, *self.obs.shape[3:])
+        rnn_states_critic = self.rnn_states_critic[:-1].reshape(-1, *self.rnn_states_critic.shape[3:])
         actions = self.actions.reshape(-1, self.actions.shape[-1])
         if self.available_actions is not None:
             available_actions = self.available_actions[:-1].reshape(-1, self.available_actions.shape[-1])
@@ -234,6 +247,7 @@ class SharedGNNReplayBuffer(object):
             # obs size [T+1 N M Dim]-->[T N M Dim]-->[T*N*M,Dim]-->[index,Dim]
             share_obs_batch = share_obs[indices]
             obs_batch = obs[indices]
+            rnn_states_critic_batch = rnn_states_critic[indices]
             actions_batch = actions[indices]
             if self.available_actions is not None:
                 available_actions_batch = available_actions[indices]
@@ -249,5 +263,5 @@ class SharedGNNReplayBuffer(object):
             else:
                 adv_targ = advantages[indices]
 
-            yield share_obs_batch, obs_batch, actions_batch, value_preds_batch, return_batch, masks_batch,\
+            yield share_obs_batch, obs_batch, rnn_states_critic_batch, actions_batch, value_preds_batch, return_batch, masks_batch,\
                   active_masks_batch, old_action_log_probs_batch, adv_targ, available_actions_batch

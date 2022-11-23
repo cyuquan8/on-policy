@@ -45,12 +45,17 @@ class DGCN_MAPPOPolicy:
         update_linear_schedule(self.actor_optimizer, episode, episodes, self.lr)
         update_linear_schedule(self.critic_optimizer, episode, episodes, self.critic_lr)
 
-    def get_actions(self, cent_obs, obs, rnn_states_critic, masks, available_actions=None,
-                    deterministic=False, knn=False):
+    def get_actions(self, cent_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, 
+                    scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic, masks, 
+                    available_actions=None, deterministic=False, knn=False):
         """
         Compute actions and value function predictions for the given inputs.
         :param cent_obs (np.ndarray): centralized input to the critic.
         :param obs (np.ndarray): local agent inputs to the actor.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
         :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic.
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
@@ -63,13 +68,19 @@ class DGCN_MAPPOPolicy:
         :return action_log_probs: (torch.Tensor) log probabilities of chosen actions.
         :return rnn_states_critic: (torch.Tensor) updated critic network RNN states.
         """
-        actions, action_log_probs = self.actor(obs,
-                                               available_actions,
-                                               deterministic,
-                                               knn)
+        actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+        scmu_hidden_states_actor, scmu_cell_states_actor = self.actor(obs,
+                                                                      somu_hidden_states_actor,
+                                                                      somu_cell_states_actor,
+                                                                      scmu_hidden_states_actor,
+                                                                      scmu_cell_states_actor, 
+                                                                      available_actions,
+                                                                      deterministic,
+                                                                      knn)
 
         values, rnn_states_critic = self.critic(cent_obs, rnn_states_critic, masks)
-        return values, actions, action_log_probs, rnn_states_critic
+        return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+               scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic
 
     def get_values(self, cent_obs, rnn_states_critic, masks):
         """
@@ -83,12 +94,17 @@ class DGCN_MAPPOPolicy:
         values, _ = self.critic(cent_obs, rnn_states_critic, masks)
         return values
 
-    def evaluate_actions(self, cent_obs, obs, rnn_states_critic, action, masks,
-                         available_actions=None, active_masks=None, knn=False):
+    def evaluate_actions(self, cent_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, 
+                         scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic, 
+                         action, masks, available_actions=None, active_masks=None, knn=False):
         """
         Get action logprobs / entropy and value function predictions for actor update.
         :param cent_obs (np.ndarray): centralized input to the critic.
         :param obs (np.ndarray): local agent inputs to the actor.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
         :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic.
         :param action: (np.ndarray) actions whose log probabilites and entropy to compute.
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
@@ -102,6 +118,10 @@ class DGCN_MAPPOPolicy:
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
         action_log_probs, dist_entropy = self.actor.evaluate_actions(obs,
+                                                                     somu_hidden_states_actor,
+                                                                     somu_cell_states_actor,
+                                                                     scmu_hidden_states_actor,
+                                                                     scmu_cell_states_actor, 
                                                                      action,
                                                                      available_actions,
                                                                      active_masks,
@@ -110,15 +130,28 @@ class DGCN_MAPPOPolicy:
         values, _ = self.critic(cent_obs, rnn_states_critic, masks)
         return values, action_log_probs, dist_entropy
 
-    def act(self, obs, available_actions=None, deterministic=False, knn=False):
+    def act(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
+            scmu_cell_states_actor, available_actions=None, deterministic=False, knn=False):
         """
         Compute actions using the given inputs.
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param masks: (np.ndarray) denotes points at which RNN states should be reset.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
                                   (if None, all actions available)
         :param deterministic: (bool) whether the action should be mode of distribution or should be sampled.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
         """
-        actions, _ = self.actor(obs, available_actions, deterministic, knn)
-        return actions
+        actions, _ , somu_hidden_states_actor, somu_cell_states_actor, \
+        scmu_hidden_states_actor, scmu_cell_states_actor = self.actor(obs,
+                                                                      somu_hidden_states_actor,
+                                                                      somu_cell_states_actor,
+                                                                      scmu_hidden_states_actor,
+                                                                      scmu_cell_states_actor,  
+                                                                      available_actions, 
+                                                                      deterministic, 
+                                                                      knn)
+        return actions, somu_hidden_states_actor, somu_cell_states_actor, \
+               scmu_hidden_states_actor, scmu_cell_states_actor,

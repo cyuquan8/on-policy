@@ -94,6 +94,8 @@ def get_config():
             Hidden Size for MLP layers in DGCN actor network, (default: 128)
         --n_actor_layers
             Number of MLP layers in DGCN actor network, (default: 2)
+        --knn
+            Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
 
     Optimizer parameters:
         --lr <float>
@@ -226,7 +228,7 @@ def get_config():
     parser.add_argument("--use_valuenorm", action='store_false', default=True, help="by default True, use running mean and std to normalize rewards.")
     parser.add_argument("--use_feature_normalization", action='store_false',
                         default=True, help="Whether to apply layernorm to the inputs")
-    parser.add_argument("--use_orthogonal", action='store_false', default=True,
+    parser.add_argument("--use_orthogonal", action='store_true', default=True,
                         help="Whether to use Orthogonal initialization for weights and 0 initialization for biases")
     parser.add_argument("--gain", type=float, default=0.01,
                         help="The gain # of last action layer")
@@ -241,12 +243,13 @@ def get_config():
     parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
     parser.add_argument("--actor_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor network")
     parser.add_argument("--n_actor_layers", type=int, default=2, help="Number of MLP layers in DGCN actor network")
+    parser.add_argument("--knn", action='store_false', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',
                         default=False, help='Whether to use a naive recurrent policy')
     parser.add_argument("--use_recurrent_policy", action='store_false',
-                        default=True, help='use a recurrent policy')
+                        default=False, help='use a recurrent policy')
     parser.add_argument("--recurrent_N", type=int, default=1, help="The number of recurrent layers.")
     parser.add_argument("--data_chunk_length", type=int, default=10,
                         help="Time length of chunks used to train a recurrent_policy")
@@ -258,7 +261,7 @@ def get_config():
                         help='critic learning rate (default: 5e-4)')
     parser.add_argument("--opti_eps", type=float, default=1e-5,
                         help='RMSprop optimizer epsilon (default: 1e-5)')
-    parser.add_argument("--weight_decay", type=float, default=0)
+    parser.add_argument("--weight_decay", type=float, default=1e-5)
 
     # ppo parameters
     parser.add_argument("--ppo_epoch", type=int, default=15,
@@ -272,10 +275,10 @@ def get_config():
     parser.add_argument("--entropy_coef", type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
     parser.add_argument("--value_loss_coef", type=float,
-                        default=1, help='value loss coefficient (default: 0.5)')
+                        default=0.5, help='value loss coefficient (default: 0.5)')
     parser.add_argument("--use_max_grad_norm",
                         action='store_false', default=True, help="by default, use max norm of gradients. If set, do not use.")
-    parser.add_argument("--max_grad_norm", type=float, default=10.0,
+    parser.add_argument("--max_grad_norm", type=float, default=0.5,
                         help='max norm of gradients (default: 0.5)')
     parser.add_argument("--use_gae", action='store_false',
                         default=True, help='use generalized advantage estimation')
@@ -284,7 +287,7 @@ def get_config():
     parser.add_argument("--gae_lambda", type=float, default=0.95,
                         help='gae lambda parameter (default: 0.95)')
     parser.add_argument("--use_proper_time_limits", action='store_true',
-                        default=False, help='compute returns taking into account time limits')
+                        default=True, help='compute returns taking into account time limits')
     parser.add_argument("--use_huber_loss", action='store_false', default=True, help="by default, use huber loss. If set, do not use huber loss.")
     parser.add_argument("--use_value_active_masks",
                         action='store_false', default=True, help="by default True, whether to mask useless data in value loss.")
@@ -302,7 +305,7 @@ def get_config():
     parser.add_argument("--log_interval", type=int, default=5, help="time duration between contiunous twice log printing.")
 
     # eval parameters
-    parser.add_argument("--use_eval", action='store_true', default=False, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
+    parser.add_argument("--use_eval", action='store_true', default=True, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
     parser.add_argument("--eval_interval", type=int, default=25, help="time duration between contiunous twice evaluation progress.")
     parser.add_argument("--eval_episodes", type=int, default=32, help="number of episodes of a single evaluation.")
 

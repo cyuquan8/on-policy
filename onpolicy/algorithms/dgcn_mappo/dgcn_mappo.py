@@ -29,6 +29,7 @@ class DGCN_MAPPO():
         self.entropy_coef = args.entropy_coef
         self.max_grad_norm = args.max_grad_norm       
         self.huber_delta = args.huber_delta
+        self.knn = args.knn
 
         self._use_recurrent_policy = args.use_recurrent_policy
         self._use_naive_recurrent = args.use_naive_recurrent_policy
@@ -101,7 +102,8 @@ class DGCN_MAPPO():
         :return actor_grad_norm: (torch.Tensor) gradient norm from actor update.
         :return imp_weights: (torch.Tensor) importance sampling weights.
         """
-        share_obs_batch, obs_batch, rnn_states_critic_batch, actions_batch, \
+        share_obs_batch, obs_batch, somu_hidden_states_actor_batch, somu_cell_states_actor_batch, \
+        scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, rnn_states_critic_batch, actions_batch, \
         value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
         adv_targ, available_actions_batch = sample
 
@@ -114,11 +116,16 @@ class DGCN_MAPPO():
         # Reshape to do in a single forward pass for all steps
         values, action_log_probs, dist_entropy = self.policy.evaluate_actions(share_obs_batch,
                                                                               obs_batch,
+                                                                              somu_hidden_states_actor_batch,
+                                                                              somu_cell_states_actor_batch,
+                                                                              scmu_hidden_states_actor_batch,
+                                                                              scmu_cell_states_actor_batch,
                                                                               rnn_states_critic_batch, 
                                                                               actions_batch, 
                                                                               masks_batch, 
                                                                               available_actions_batch,
-                                                                              active_masks_batch)
+                                                                              active_masks_batch,
+                                                                              self.knn)
         # actor update
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
 
@@ -135,7 +142,7 @@ class DGCN_MAPPO():
         policy_loss = policy_action_loss
 
         self.policy.actor_optimizer.zero_grad()
-
+        
         if update_actor:
             (policy_loss - dist_entropy * self.entropy_coef).backward()
 

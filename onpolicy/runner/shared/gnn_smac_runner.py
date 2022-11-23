@@ -3,45 +3,18 @@ import wandb
 import numpy as np
 from functools import reduce
 import torch
-from onpolicy.runner.shared.base_runner import Runner
-from onpolicy.utils.shared_gnn_buffer import SharedGNNReplayBuffer as SharedReplayBuffer
+from onpolicy.runner.shared.gnn_base_runner import GNNRunner
 
 def _t2n(x):
     return x.detach().cpu().numpy()
 
 
-class SMACRunner(Runner):
+class GNNSMACRunner(GNNRunner):
     """Runner class to perform training, evaluation. and data collection for SMAC. See parent class for details."""
 
     def __init__(self, config):
-        super(SMACRunner, self).__init__(config)
+        super(GNNSMACRunner, self).__init__(config)
 
-        from onpolicy.algorithms.dgcn_mappo.dgcn_mappo import DGCN_MAPPO as TrainAlgo
-        from onpolicy.algorithms.dgcn_mappo.algorithm.dgcnMAPPOPolicy import DGCN_MAPPOPolicy as Policy
-        share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else \
-        self.envs.observation_space[0]
-
-        self.all_args.num_agents = self.num_agents
-
-        # policy network
-        self.policy = Policy(self.all_args,
-                             self.envs.observation_space[0],
-                             share_observation_space,
-                             self.envs.action_space[0],
-                             device=self.device)
-
-        if self.model_dir is not None:
-            self.restore()
-
-        # algorithm
-        self.trainer = TrainAlgo(self.all_args, self.policy, device=self.device)
-
-        # buffer
-        self.buffer = SharedReplayBuffer(self.all_args,
-                                         self.num_agents,
-                                         self.envs.observation_space[0],
-                                         share_observation_space,
-                                         self.envs.action_space[0])
     def run(self):
         self.warmup()
 
@@ -57,12 +30,14 @@ class SMACRunner(Runner):
 
             for step in range(self.episode_length):
                 # Sample actions
-                values, actions, action_log_probs, rnn_states_critic = self.collect(step)
+                values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+                scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic = self.collect(step)
 
                 # Obser reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
-                       values, actions, action_log_probs, rnn_states_critic
+                       values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+                       scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic
 
                 # insert data into buffer
                 self.insert(data)
@@ -139,30 +114,46 @@ class SMACRunner(Runner):
     @torch.no_grad()
     def collect(self, step):
         self.trainer.prep_rollout()
-
-        value, action, action_log_prob, rnn_state_critic\
+        
+        value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
+        scmu_hidden_states_actor, scmu_cell_states_actor, rnn_state_critic \
             = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
                                               np.concatenate(self.buffer.obs[step]),
+                                              np.concatenate(self.buffer.somu_hidden_states_actor[step]),
+                                              np.concatenate(self.buffer.somu_cell_states_actor[step]),
+                                              np.concatenate(self.buffer.scmu_hidden_states_actor[step]),
+                                              np.concatenate(self.buffer.scmu_cell_states_actor[step]),
                                               np.concatenate(self.buffer.rnn_states_critic[step]),
                                               np.concatenate(self.buffer.masks[step]),
-                                              np.concatenate(self.buffer.available_actions[step]))
+                                              np.concatenate(self.buffer.available_actions[step]),
+                                              self.knn)
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
         action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
+        somu_hidden_states_actor = np.array(np.split(_t2n(somu_hidden_states_actor), self.n_rollout_threads))
+        somu_cell_states_actor = np.array(np.split(_t2n(somu_cell_states_actor), self.n_rollout_threads))
+        scmu_hidden_states_actor = np.array(np.split(_t2n(scmu_hidden_states_actor), self.n_rollout_threads))
+        scmu_cell_states_actor = np.array(np.split(_t2n(scmu_cell_states_actor), self.n_rollout_threads))
         rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
 
-        return values, actions, action_log_probs, rnn_states_critic
+        return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+               scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic
 
     def insert(self, data):
         obs, share_obs, rewards, dones, infos, available_actions, \
-        values, actions, action_log_probs, rnn_states_critic = data
-
+        values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
+        scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic = data
+        
         dones_env = np.all(dones, axis=1)
-
 
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
+
+        somu_hidden_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.somu_hidden_states_actor.shape[3:]), dtype=np.float32)
+        somu_cell_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.somu_cell_states_actor.shape[3:]), dtype=np.float32)
+        scmu_hidden_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_hidden_states_actor.shape[3:]), dtype=np.float32)
+        scmu_cell_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_cell_states_actor.shape[3:]), dtype=np.float32)
         rnn_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
 
         active_masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
@@ -176,9 +167,9 @@ class SMACRunner(Runner):
         if not self.use_centralized_V:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, rnn_states_critic,
-                           actions, action_log_probs, values, rewards, masks, bad_masks, active_masks,
-                           available_actions)
+        self.buffer.insert(share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, \
+                           scmu_cell_states_actor,rnn_states_critic, actions, action_log_probs, values, rewards, masks, \
+                           bad_masks, active_masks, available_actions)
 
     def log_train(self, train_infos, total_num_steps):
         train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)
@@ -198,16 +189,26 @@ class SMACRunner(Runner):
 
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
-
+        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
             self.trainer.prep_rollout()
-            eval_actions = \
+            eval_actions, eval_somu_hidden_states_actor, eval_somu_cell_states_actor, eval_scmu_hidden_states_actor, eval_scmu_cell_states_actor = \
                 self.trainer.policy.act(np.concatenate(eval_obs),
+                                        np.concatenate(eval_rnn_states),
+                                        np.concatenate(eval_masks),
                                         np.concatenate(eval_available_actions),
-                                        deterministic=True)
+                                        deterministic=True,
+                                        knn=self.knn)
             eval_actions = np.array(np.split(_t2n(eval_actions), self.n_eval_rollout_threads))
+            eval_somu_hidden_states_actor = np.array(np.split(_t2n(eval_somu_hidden_states_actor), self.n_eval_rollout_threads))
+            eval_somu_cell_states_actor = np.array(np.split(_t2n(eval_somu_cell_states_actor), self.n_eval_rollout_threads))
+            eval_scmu_hidden_states_actor = np.array(np.split(_t2n(eval_scmu_hidden_states_actor), self.n_eval_rollout_threads))
+            eval_scmu_cell_states_actor = np.array(np.split(_t2n(eval_scmu_cell_states_actor), self.n_eval_rollout_threads))
 
             # Obser reward and next obs
             eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
@@ -215,6 +216,11 @@ class SMACRunner(Runner):
             one_episode_rewards.append(eval_rewards)
 
             eval_dones_env = np.all(eval_dones, axis=1)
+
+            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
 
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1),

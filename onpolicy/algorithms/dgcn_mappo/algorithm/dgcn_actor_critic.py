@@ -154,13 +154,11 @@ class DGCNActor(nn.Module):
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
-        self.somu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=self.obs_dims, hidden_size=self.somu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0).to(device) 
-                               for _ in range(self.num_somu_lstm)]) for _ in range(self.num_agents)]
+        self.somu_lstm_list = [nn.ModuleList([nn.LSTMCell(input_size=self.obs_dims, hidden_size=self.somu_lstm_hidden_size, device=device) for _ in range(self.num_somu_lstm)]) for _ in range(self.num_agents)]
 
         # list of lstms for self communication memory unit (scmu) for each agent
         # somu_lstm_input_size is the last layer of dgcn layer
-        self.scmu_lstm_list = [nn.ModuleList([nn.LSTM(input_size=self.obs_dims, hidden_size=self.scmu_lstm_hidden_size, num_layers=1, batch_first=True, dropout=0).to(device) 
-                               for _ in range(self.num_scmu_lstm)]) for _ in range(self.num_agents)]
+        self.scmu_lstm_list = [nn.ModuleList([nn.LSTMCell(input_size=self.obs_dims, hidden_size=self.scmu_lstm_hidden_size, device=device) for _ in range(self.num_scmu_lstm)]) for _ in range(self.num_agents)]
 
         # weights to generate query, key and value for somu and scmu for each agent
         self.somu_query_layer_list = nn.ModuleList([MLPBlock(input_shape=self.somu_lstm_hidden_size, output_shape=self.somu_lstm_hidden_size, activation_func="relu", dropout_p= 0, weight_initialisation="default") 
@@ -192,10 +190,14 @@ class DGCNActor(nn.Module):
         
         self.to(device)
         
-    def forward(self, obs, available_actions=None, deterministic=False, knn=False):
+    def forward(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, available_actions=None, deterministic=False, knn=False):
         """
         Compute actions from the given inputs.
         :param obs: (np.ndarray / torch.Tensor) observation inputs into network.
+        :param somu_hidden_states_actor: (np.ndarray / torch.Tensor) hidden states for somu (LSTMCell) network.
+        :param somu_cell_states_actor: (np.ndarray / torch.Tensor) cell states for somu (LSTMCell) network.
+        :param scmu_hidden_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu (LSTMCell) network.
+        :param scmu_cell_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu (LSTMCell) network.
         :param available_actions: (np.ndarray / torch.Tensor) denotes which actions are available to agent
                                                               (if None, all actions available)
         :param deterministic: (bool) whether to sample from action distribution or return the mode.
@@ -205,14 +207,27 @@ class DGCNActor(nn.Module):
         :return action_log_probs: (torch.Tensor) log probabilities of taken actions.
         """
         obs = check(obs).to(**self.tpdv)
+        somu_hidden_states_actor = check(somu_hidden_states_actor).to(**self.tpdv)
+        somu_cell_states_actor = check(somu_cell_states_actor).to(**self.tpdv)
+        scmu_hidden_states_actor = check(scmu_hidden_states_actor).to(**self.tpdv)
+        scmu_cell_states_actor = check(scmu_cell_states_actor).to(**self.tpdv)
         if available_actions is not None:
             available_actions = check(available_actions).to(**self.tpdv)
             available_actions = available_actions.view(self.n_rollout_threads, self.num_agents, -1)
-        # obtain reshaped observation 
+        # obtain reshaped observation, hidden states and cell states of somu and scmu
         obs = obs.view(self.n_rollout_threads, self.num_agents, -1)
+        somu_hidden_states_actor = somu_hidden_states_actor.view(self.n_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size)
+        somu_cell_states_actor = somu_cell_states_actor.view(self.n_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size)
+        scmu_hidden_states_actor = scmu_hidden_states_actor.view(self.n_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size)
+        scmu_cell_states_actor = scmu_cell_states_actor.view(self.n_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size)
         # store actions and actions_log_probs per env. shape([n_rollout_threads, num_agents, action_dims])
         actions_list = [[] for _ in range(self.n_rollout_threads)]
         action_log_probs_list = [[] for _ in range(self.n_rollout_threads)]
+        # store and hidden and cell states of somu and scmu per env. shape([n_rollout_threads, num_agents, num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_state / scmu_lstm_hidden_size])
+        somu_lstm_hidden_state_list = [[[] for _ in range(self.num_agents)] for _ in range(self.n_rollout_threads)]
+        somu_lstm_cell_state_list = [[[] for _ in range(self.num_agents)] for _ in range(self.n_rollout_threads)]
+        scmu_lstm_hidden_state_list = [[[] for _ in range(self.num_agents)] for _ in range(self.n_rollout_threads)]
+        scmu_lstm_cell_state_list = [[[] for _ in range(self.num_agents)] for _ in range(self.n_rollout_threads)]
 
         # iterate over number of env rollouts
         for i in range(self.n_rollout_threads):
@@ -221,7 +236,7 @@ class DGCNActor(nn.Module):
             else:
                 # obtain edge index
                 edge_index = complete_graph_edge_index(self.num_agents) 
-                edge_index = torch.tensor(edge_index, dtype = torch.long, device=self.device).t().contiguous()
+                edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
 
             # observation per env (shape: [num_agents, obs_dims])
             obs_env = obs[i]
@@ -230,35 +245,36 @@ class DGCNActor(nn.Module):
 
             # iterate over agents 
             for j in range(self.num_agents):
-                # empty list to store ouputs for somu and scmu
-                somu_lstm_output_list = []
-                scmu_lstm_output_list = []
                 # iterate over each somu_lstm in somu_lstm_list
                 for k in range(self.num_somu_lstm):
                     # observation per env per agent (shape: [1, obs_dims])
                     obs_env_agent = torch.unsqueeze(obs_env[j], dim=0)
                     # obs_env_agent --> somu_lstm (shape: [1, somu_lstm_hidden_size])
-                    somu_lstm_output, _ = self.somu_lstm_list[j][k](obs_env_agent)
-                    somu_lstm_output_list.append(somu_lstm_output)
+                    somu_lstm_hidden_state, somu_lstm_cell_state = self.somu_lstm_list[j][k](obs_env_agent, (torch.unsqueeze(somu_hidden_states_actor[i, j, k], dim=0), torch.unsqueeze(somu_cell_states_actor[i, j, k], dim=0)))
+                    somu_lstm_hidden_state_list[i][j].append(somu_lstm_hidden_state)
+                    somu_lstm_cell_state_list[i][j].append(somu_lstm_cell_state)
                 # iterate over each somu lstm in scmu_lstm_list
                 for k in range(self.num_scmu_lstm):
                     # last layer of dgcn_output per agent (shape: [1, obs_dims])
                     dgcn_output_agent = torch.unsqueeze(dgcn_output[j, -1, :], dim=0)
                     # dgcn_output_agent --> scmu_lstm (shape: [1, scmu_lstm_hidden_size])
-                    scmu_lstm_output, _ = self.scmu_lstm_list[j][k](dgcn_output_agent)
-                    scmu_lstm_output_list.append(scmu_lstm_output)
+                    scmu_lstm_hidden_state, scmu_lstm_cell_state = self.scmu_lstm_list[j][k](dgcn_output_agent, (torch.unsqueeze(scmu_hidden_states_actor[i, j, k], dim=0), torch.unsqueeze(scmu_cell_states_actor[i, j, k], dim=0)))
+                    scmu_lstm_hidden_state_list[i][j].append(scmu_lstm_hidden_state)
+                    scmu_lstm_cell_state_list[i][j].append(scmu_lstm_cell_state)
 
-                # concatenate lstm ouput based on number of lstms (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
-                somu_lstm_output = torch.cat(somu_lstm_output_list, dim=0)
-                scmu_lstm_output = torch.cat(scmu_lstm_output_list, dim=0)
+                # concatenate lstm outputs based on number of lstms (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
+                somu_lstm_hidden_state_list[i][j] = torch.cat(somu_lstm_hidden_state_list[i][j], dim=0)
+                somu_lstm_cell_state_list[i][j] = torch.cat(somu_lstm_cell_state_list[i][j], dim=0)
+                scmu_lstm_hidden_state_list[i][j] = torch.cat(scmu_lstm_hidden_state_list[i][j], dim=0)
+                scmu_lstm_cell_state_list[i][j] = torch.cat(scmu_lstm_cell_state_list[i][j], dim=0) 
 
                 # obtain query, key and value for somu_lstm and scmu_lstm_outputs (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
-                q_somu = self.somu_query_layer_list[i](somu_lstm_output)
-                k_somu = self.somu_key_layer_list[i](somu_lstm_output)
-                v_somu = self.somu_value_layer_list[i](somu_lstm_output)
-                q_scmu = self.scmu_query_layer_list[i](scmu_lstm_output)
-                k_scmu = self.scmu_key_layer_list[i](scmu_lstm_output)
-                v_scmu = self.scmu_value_layer_list[i](scmu_lstm_output)
+                q_somu = self.somu_query_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                k_somu = self.somu_key_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                v_somu = self.somu_value_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                q_scmu = self.scmu_query_layer_list[j](scmu_lstm_hidden_state_list[i][j])
+                k_scmu = self.scmu_key_layer_list[j](scmu_lstm_hidden_state_list[i][j])
+                v_scmu = self.scmu_value_layer_list[j](scmu_lstm_hidden_state_list[i][j])
 
                 # q, k, v --> multihead attention (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
                 somu_multi_att_output = self.somu_multi_att_layer_list[j](q_somu, k_somu, v_somu)[0] 
@@ -278,17 +294,27 @@ class DGCNActor(nn.Module):
                 actions_list[i].append(actions)
                 action_log_probs_list[i].append(action_log_probs)
 
-            # concatenate across agents (shape: [num_agents, action_space_dim])
+            # concatenate actions_list and action_log_probs_list across agents (shape: [num_agents, action_space_dim])
             actions_list[i] = torch.cat(actions_list[i], dim=0)
             action_log_probs_list[i] = torch.cat(action_log_probs_list[i], dim=0)
+            # concatenate somu and scmu hidden and cell states across agents (shape: [num_agents, num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
+            somu_lstm_hidden_state_list[i] = torch.stack(somu_lstm_hidden_state_list[i], dim=0)
+            somu_lstm_cell_state_list[i] = torch.stack(somu_lstm_cell_state_list[i], dim=0)
+            scmu_lstm_hidden_state_list[i] = torch.stack(scmu_lstm_hidden_state_list[i], dim=0)
+            scmu_lstm_cell_state_list[i] = torch.stack(scmu_lstm_cell_state_list[i], dim=0)
 
-        # (shape: [n_rollout_threads * num_agents, action_space_dim])
-        return torch.cat(actions_list, dim=0), torch.cat(action_log_probs_list, dim=0)
+        # (shape: [n_rollout_threads * num_agents, action_space_dim]), (shape: [n_rollout_threads * num_agents, num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
+        return torch.cat(actions_list, dim=0), torch.cat(action_log_probs_list, dim=0), torch.cat(somu_lstm_hidden_state_list, dim=0), torch.cat(somu_lstm_cell_state_list, dim=0), \
+               torch.cat(scmu_lstm_hidden_state_list, dim=0), torch.cat(scmu_lstm_cell_state_list, dim=0) 
 
-    def evaluate_actions(self, obs, action, available_actions=None, active_masks=None, knn=False):
+    def evaluate_actions(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, action, available_actions=None, active_masks=None, knn=False):
         """
         Compute log probability and entropy of given actions.
         :param obs: (torch.Tensor) observation inputs into network.
+        :param somu_hidden_states_actor: (torch.Tensor) hidden states for somu (LSTMCell) network.
+        :param somu_cell_states_actor: (torch.Tensor) cell states for somu (LSTMCell) network.
+        :param scmu_hidden_states_actor: (torch.Tensor) hidden states for scmu (LSTMCell) network.
+        :param scmu_cell_states_actor: (torch.Tensor) hidden states for scmu (LSTMCell) network.
         :param action: (torch.Tensor) actions whose entropy and log probability to evaluate.
         :param available_actions: (torch.Tensor) denotes which actions are available to agent
                                                               (if None, all actions available)
@@ -299,28 +325,42 @@ class DGCNActor(nn.Module):
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
         obs = check(obs).to(**self.tpdv)
+        somu_hidden_states_actor = check(somu_hidden_states_actor).to(**self.tpdv)
+        somu_cell_states_actor = check(somu_cell_states_actor).to(**self.tpdv)
+        scmu_hidden_states_actor = check(scmu_hidden_states_actor).to(**self.tpdv)
+        scmu_cell_states_actor = check(scmu_cell_states_actor).to(**self.tpdv)
         action = check(action).to(**self.tpdv)
+        # obtain reshaped observation, actions and hidden states and cell states of somu and scmu
+        obs = obs.view(-1, self.num_agents, self.obs_dims)
+        num_steps = obs.shape[0] # obtain number of steps to be evaluated
+        action = action.view(num_steps, self.num_agents, -1)
+        somu_hidden_states_actor = somu_hidden_states_actor.view(num_steps, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size)
+        somu_cell_states_actor = somu_cell_states_actor.view(num_steps, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size)
+        scmu_hidden_states_actor = scmu_hidden_states_actor.view(num_steps, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size)
+        scmu_cell_states_actor = scmu_cell_states_actor.view(num_steps, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size)
         if available_actions is not None:
             available_actions = check(available_actions).to(**self.tpdv)
-            available_actions = available_actions.view(self.n_rollout_threads, self.num_agents, -1)
+            available_actions = available_actions.view(num_steps, self.num_agents, -1)
         if active_masks is not None:
             active_masks = check(active_masks).to(**self.tpdv)
-            active_masks = active_masks.view(self.n_rollout_threads, self.num_agents, -1)
-        # obtain reshaped observation and actions 
-        obs = obs.view(self.n_rollout_threads, self.num_agents, -1)
-        action = action.view(self.n_rollout_threads, self.num_agents, -1)
-        # store actions and actions_log_probs per env. shape([n_rollout_threads, num_agents, action_dims])
-        action_log_probs_list = [[] for _ in range(self.n_rollout_threads)]
-        dist_entropy_list = [[] for _ in range(self.n_rollout_threads)]
+            active_masks = active_masks.view(num_steps, self.num_agents, -1)
+        # store actions and actions_log_probs per step. shape([num_steps, num_agents, action_dims])
+        action_log_probs_list = [[] for _ in range(num_steps)]
+        dist_entropy_list = [[] for _ in range(num_steps)]
+        # store and hidden and cell states of somu and scmu per env. shape([num_steps, num_agents, num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_state / scmu_lstm_hidden_size])
+        somu_lstm_hidden_state_list = [[[] for _ in range(self.num_agents)] for _ in range(num_steps)]
+        somu_lstm_cell_state_list = [[[] for _ in range(self.num_agents)] for _ in range(num_steps)]
+        scmu_lstm_hidden_state_list = [[[] for _ in range(self.num_agents)] for _ in range(num_steps)]
+        scmu_lstm_cell_state_list = [[[] for _ in range(self.num_agents)] for _ in range(num_steps)]
 
-        # iterate over number of env rollouts
-        for i in range(self.n_rollout_threads):
+        # iterate over number of steps
+        for i in range(num_steps):
             if knn:
                 raise NotImplementedError
             else:
                 # obtain edge index
                 edge_index = complete_graph_edge_index(self.num_agents) 
-                edge_index = torch.tensor(edge_index, dtype = torch.long).t().contiguous()
+                edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
 
             # observation per env (shape: [num_agents, obs_dims])
             obs_env = obs[i]
@@ -329,39 +369,40 @@ class DGCNActor(nn.Module):
 
             # iterate over agents 
             for j in range(self.num_agents):
-                # empty list to store ouputs for somu and scmu
-                somu_lstm_output_list = []
-                scmu_lstm_output_list = []
                 # iterate over each somu_lstm in somu_lstm_list
                 for k in range(self.num_somu_lstm):
                     # observation per env per agent (shape: [1, obs_dims])
                     obs_env_agent = torch.unsqueeze(obs_env[j], dim=0)
                     # obs_env_agent --> somu_lstm (shape: [1, somu_lstm_hidden_size])
-                    somu_lstm_output, _ = self.somu_lstm_list[j][k](obs_env_agent)
-                    somu_lstm_output_list.append(somu_lstm_output)
+                    somu_lstm_hidden_state, somu_lstm_cell_state = self.somu_lstm_list[j][k](obs_env_agent, (torch.unsqueeze(somu_hidden_states_actor[i, j, k], dim=0), torch.unsqueeze(somu_cell_states_actor[i, j, k], dim=0)))
+                    somu_lstm_hidden_state_list[i][j].append(somu_lstm_hidden_state)
+                    somu_lstm_cell_state_list[i][j].append(somu_lstm_cell_state)
                 # iterate over each somu lstm in scmu_lstm_list
                 for k in range(self.num_scmu_lstm):
                     # last layer of dgcn_output per agent (shape: [1, obs_dims])
                     dgcn_output_agent = torch.unsqueeze(dgcn_output[j, -1, :], dim=0)
                     # dgcn_output_agent --> scmu_lstm (shape: [1, scmu_lstm_hidden_size])
-                    scmu_lstm_output, _ = self.scmu_lstm_list[j][k](dgcn_output_agent)
-                    scmu_lstm_output_list.append(scmu_lstm_output)
+                    scmu_lstm_hidden_state, scmu_lstm_cell_state = self.scmu_lstm_list[j][k](dgcn_output_agent, (torch.unsqueeze(scmu_hidden_states_actor[i, j, k], dim=0), torch.unsqueeze(scmu_cell_states_actor[i, j, k], dim=0)))
+                    scmu_lstm_hidden_state_list[i][j].append(scmu_lstm_hidden_state)
+                    scmu_lstm_cell_state_list[i][j].append(scmu_lstm_cell_state)
 
-                # concatenate lstm ouput based on number of lstms (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
-                somu_lstm_output = torch.cat(somu_lstm_output_list, dim=0)
-                scmu_lstm_output = torch.cat(scmu_lstm_output_list, dim=0)
+                # concatenate lstm outputs based on number of lstms (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
+                somu_lstm_hidden_state_list[i][j] = torch.cat(somu_lstm_hidden_state_list[i][j], dim=0)
+                somu_lstm_cell_state_list[i][j] = torch.cat(somu_lstm_cell_state_list[i][j], dim=0)
+                scmu_lstm_hidden_state_list[i][j] = torch.cat(scmu_lstm_hidden_state_list[i][j], dim=0)
+                scmu_lstm_cell_state_list[i][j] = torch.cat(scmu_lstm_cell_state_list[i][j], dim=0)
 
                 # obtain query, key and value for somu_lstm and scmu_lstm_outputs (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
-                q_somu = self.somu_query_layer_list[i](somu_lstm_output)
-                k_somu = self.somu_key_layer_list[i](somu_lstm_output)
-                v_somu = self.somu_value_layer_list[i](somu_lstm_output)
-                q_scmu = self.scmu_query_layer_list[i](scmu_lstm_output)
-                k_scmu = self.scmu_key_layer_list[i](scmu_lstm_output)
-                v_scmu = self.scmu_value_layer_list[i](scmu_lstm_output)
+                q_somu = self.somu_query_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                k_somu = self.somu_key_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                v_somu = self.somu_value_layer_list[j](somu_lstm_hidden_state_list[i][j])
+                q_scmu = self.scmu_query_layer_list[j](scmu_lstm_hidden_state_list[i][j])
+                k_scmu = self.scmu_key_layer_list[j](scmu_lstm_hidden_state_list[i][j])
+                v_scmu = self.scmu_value_layer_list[j](scmu_lstm_hidden_state_list[i][j])
 
                 # q, k, v --> multihead attention (shape: [num_somu_lstm / num_scmu_lstm, somu_lstm_hidden_size / scmu_lstm_hidden_size])
-                somu_multi_att_output = self.somu_multi_att_layer_list[j](q_somu, k_somu, v_somu)[0]  
-                scmu_multi_att_output = self.somu_multi_att_layer_list[j](q_scmu, k_scmu, v_scmu)[0] 
+                somu_multi_att_output = self.somu_multi_att_layer_list[j](q_somu, k_somu, v_somu)[0] 
+                scmu_multi_att_output = self.somu_multi_att_layer_list[j](q_scmu, k_scmu, v_scmu)[0]
 
                 # reshape output (shape: [1, (num_somu_lstm / num_scmu_lstm) * (somu_lstm_hidden_size / scmu_lstm_hidden_size)])
                 somu_output = somu_multi_att_output.view(1, -1)
@@ -371,19 +412,21 @@ class DGCNActor(nn.Module):
                 output = torch.cat((obs_env_agent, dgcn_output_agent, somu_output, scmu_output), dim=-1)
                 # output --> actor_fc_layers (shape: [1, actor_fc_output_dims])
                 output = self.actor_fc_layers_list[j](output)
+                # print(action[i, j])
+                # print(torch.unsqueeze(available_actions[i, j], dim=0) if available_actions is not None else None)
                 # actor_fc_layers --> act (shape: [1, action_space_dim])
-                action_log_probs, dist_entropy = self.act_list[j].evaluate_actions(output, self.actions[i, j], torch.unsqueeze(available_actions[i, j], dim=0) if available_actions is not None else None, 
+                action_log_probs, dist_entropy = self.act_list[j].evaluate_actions(output, action[i, j], torch.unsqueeze(available_actions[i, j], dim=0) if available_actions is not None else None, 
                                                                                    active_masks = torch.unsqueeze(active_masks[i, j], dim=0) if self._use_policy_active_masks and active_masks is not None else None)
                 # append to actions_list and action_log_probs_list
                 action_log_probs_list[i].append(action_log_probs)
                 dist_entropy_list[i].append(dist_entropy)
 
-            # concatenate across agents (shape: [num_agents, action_space_dim])
+            # concatenate across agents (shape: [num_agents, action_space_dim]) and (shape: [num_agents])
             action_log_probs_list[i] = torch.cat(action_log_probs_list[i], dim=0)
-            dist_entropy_list[i] = torch.cat(dist_entropy_list[i], dim=0)
+            dist_entropy_list[i] = torch.stack(dist_entropy_list[i], dim=0)
 
-        # (shape: [n_rollout_threads * num_agents, action_space_dim])
-        return torch.cat(action_log_probs_list, dim=0), torch.cat(dist_entropy_list, dim=0)
+        # (shape: [num_steps * num_agents, action_space_dim]) and (shape: [] == scalar)
+        return torch.cat(action_log_probs_list, dim=0), torch.stack(dist_entropy_list, dim=-1).mean()
 
 
 class R_Critic(nn.Module):

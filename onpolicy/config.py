@@ -218,9 +218,9 @@ def get_config():
                         help="Dimension of hidden layers for actor/critic networks")
     parser.add_argument("--use_stacked_frames", action='store_true',
                         default=False, help="Whether to use stacked_frames")
-    parser.add_argument("--hidden_size", type=int, default=64,
+    parser.add_argument("--hidden_size", type=int, default=128,
                         help="Dimension of hidden layers for actor/critic networks") 
-    parser.add_argument("--layer_N", type=int, default=1,
+    parser.add_argument("--layer_N", type=int, default=3,
                         help="Number of layers for actor/critic networks")
     parser.add_argument("--use_ReLU", action='store_false',
                         default=True, help="Whether to use ReLU")
@@ -235,14 +235,14 @@ def get_config():
 
     # dgcn network parameters
     parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor network")
-    parser.add_argument("--num_somu_lstm", type=int, default=2, help="Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--num_somu_lstm", type=int, default=3, help="Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
     parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
     parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network")
-    parser.add_argument("--num_scmu_lstm", type=int, default=2, help="Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--num_scmu_lstm", type=int, default=3, help="Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network")
     parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network")
     parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
     parser.add_argument("--actor_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor network")
-    parser.add_argument("--n_actor_layers", type=int, default=2, help="Number of MLP layers in DGCN actor network")
+    parser.add_argument("--n_actor_layers", type=int, default=3, help="Number of MLP layers in DGCN actor network")
     parser.add_argument("--knn", action='store_false', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
 
     # recurrent parameters
@@ -278,7 +278,7 @@ def get_config():
                         default=0.5, help='value loss coefficient (default: 0.5)')
     parser.add_argument("--use_max_grad_norm",
                         action='store_false', default=True, help="by default, use max norm of gradients. If set, do not use.")
-    parser.add_argument("--max_grad_norm", type=float, default=0.5,
+    parser.add_argument("--max_grad_norm", type=float, default=10,
                         help='max norm of gradients (default: 0.5)')
     parser.add_argument("--use_gae", action='store_false',
                         default=True, help='use generalized advantage estimation')
@@ -305,7 +305,7 @@ def get_config():
     parser.add_argument("--log_interval", type=int, default=5, help="time duration between contiunous twice log printing.")
 
     # eval parameters
-    parser.add_argument("--use_eval", action='store_true', default=True, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
+    parser.add_argument("--use_eval", action='store_true', default=False, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
     parser.add_argument("--eval_interval", type=int, default=25, help="time duration between contiunous twice evaluation progress.")
     parser.add_argument("--eval_episodes", type=int, default=32, help="number of episodes of a single evaluation.")
 

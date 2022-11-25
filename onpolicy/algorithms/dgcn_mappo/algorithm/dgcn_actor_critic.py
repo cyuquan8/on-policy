@@ -5,6 +5,7 @@ from onpolicy.algorithms.utils.cnn import CNNBase
 from onpolicy.algorithms.utils.mlp import MLPBase
 from onpolicy.algorithms.utils.rnn import RNNLayer
 from onpolicy.algorithms.utils.act import ACTLayer
+from onpolicy.algorithms.utils.single_act import SingleACTLayer
 from onpolicy.algorithms.utils.nn import DGCNLayers, MLPBlock, NNLayers, DGCNBlock
 from onpolicy.algorithms.utils.popart import PopArt
 from onpolicy.utils.util import get_shape_from_obs_space
@@ -186,7 +187,7 @@ class DGCNActor(nn.Module):
                                                    for _ in range(self.num_agents)]).to(device)
 
         # final action layer for each agent
-        self.act_list = nn.ModuleList([ACTLayer(action_space, self.actor_fc_output_dims, self._use_orthogonal, self._gain) for _ in range(self.num_agents)]).to(device)
+        self.act_list = nn.ModuleList([SingleACTLayer(action_space, self.actor_fc_output_dims, self._use_orthogonal, self._gain) for _ in range(self.num_agents)]).to(device)
         
         self.to(device)
         
@@ -412,8 +413,6 @@ class DGCNActor(nn.Module):
                 output = torch.cat((obs_env_agent, dgcn_output_agent, somu_output, scmu_output), dim=-1)
                 # output --> actor_fc_layers (shape: [1, actor_fc_output_dims])
                 output = self.actor_fc_layers_list[j](output)
-                # print(action[i, j])
-                # print(torch.unsqueeze(available_actions[i, j], dim=0) if available_actions is not None else None)
                 # actor_fc_layers --> act (shape: [1, action_space_dim])
                 action_log_probs, dist_entropy = self.act_list[j].evaluate_actions(output, action[i, j], torch.unsqueeze(available_actions[i, j], dim=0) if available_actions is not None else None, 
                                                                                    active_masks = torch.unsqueeze(active_masks[i, j], dim=0) if self._use_policy_active_masks and active_masks is not None else None)

@@ -193,14 +193,15 @@ class GNNSMACRunner(GNNRunner):
         eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
         eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
-        eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
             self.trainer.prep_rollout()
             eval_actions, eval_somu_hidden_states_actor, eval_somu_cell_states_actor, eval_scmu_hidden_states_actor, eval_scmu_cell_states_actor = \
                 self.trainer.policy.act(np.concatenate(eval_obs),
-                                        np.concatenate(eval_rnn_states),
-                                        np.concatenate(eval_masks),
+                                        np.concatenate(eval_somu_hidden_states_actor),
+                                        np.concatenate(eval_somu_cell_states_actor),
+                                        np.concatenate(eval_scmu_hidden_states_actor),
+                                        np.concatenate(eval_scmu_cell_states_actor),
                                         np.concatenate(eval_available_actions),
                                         deterministic=True,
                                         knn=self.knn)

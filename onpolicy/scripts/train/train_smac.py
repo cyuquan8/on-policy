@@ -92,18 +92,18 @@ def main(args):
     else:
         raise NotImplementedError
 
-    # # cuda
-    # if all_args.cuda and torch.cuda.is_available():
-    #     print("choose to use gpu...")
-    #     device = torch.device("cuda:0")
-    #     torch.set_num_threads(all_args.n_training_threads)
-    #     if all_args.cuda_deterministic:
-    #         torch.backends.cudnn.benchmark = False
-    #         torch.backends.cudnn.deterministic = True
-    # else:
-    print("choose to use cpu...")
-    device = torch.device("cpu")
-    torch.set_num_threads(all_args.n_training_threads)
+    # cuda
+    if all_args.cuda and torch.cuda.is_available():
+        print("choose to use gpu...")
+        device = torch.device("cuda:0")
+        torch.set_num_threads(all_args.n_training_threads)
+        if all_args.cuda_deterministic:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+    else:
+        print("choose to use cpu...")
+        device = torch.device("cpu")
+        torch.set_num_threads(all_args.n_training_threads)
 
     run_dir = Path(os.path.split(os.path.dirname(os.path.abspath(__file__)))[
                        0] + "/results") / all_args.env_name / all_args.map_name / all_args.algorithm_name / all_args.experiment_name

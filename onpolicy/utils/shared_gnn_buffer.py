@@ -333,8 +333,8 @@ class SharedGNNReplayBuffer(object):
                           num_mini_batch))
             mini_batch_size = batch_size // num_mini_batch
 
-        # rand = torch.randperm(batch_size // num_agents).numpy()
-        rand = torch.arange(batch_size // num_agents).numpy()
+        rand = torch.randperm(batch_size // num_agents).numpy()
+        # rand = torch.arange(batch_size // num_agents).numpy()
         sampler = [rand[i * mini_batch_size:(i + 1) * mini_batch_size] for i in range(num_mini_batch)]
 
         share_obs = self.share_obs[:-1].reshape(-1, self.num_agents, *self.share_obs.shape[3:])

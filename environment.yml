@@ -144,7 +144,6 @@ dependencies:
     - pathtools==0.1.2
     - portpicker==1.5.2
     - promise==2.3
-    - protobuf==3.20.1
     - psutil==5.9.4
     - pygame==2.1.2
     - pyparsing==3.0.9

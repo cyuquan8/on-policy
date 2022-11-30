@@ -223,10 +223,6 @@ class GNNSMACRunner(GNNRunner):
             eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
             eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
 
-            eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
-            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1),
-                                                          dtype=np.float32)
-
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:
                     eval_episode += 1

@@ -111,18 +111,33 @@ def main(args):
         os.makedirs(str(run_dir))
 
     if all_args.use_wandb:
-        run = wandb.init(config=all_args,
-                         project=all_args.env_name,
-                         entity=all_args.user_name,
-                         notes=socket.gethostname(),
-                         name=str(all_args.algorithm_name) + "_" +
-                              str(all_args.experiment_name) +
-                              "_seed" + str(all_args.seed),
-                         group=all_args.map_name,
-                         dir=str(run_dir),
-                         job_type="training",
-                         reinit=True,
-                         resume=True)
+        if all_args.wandb_resume_run_id:
+            run = wandb.init(id=all_args.wandb_resume_run_id,
+                             config=all_args,
+                             project=all_args.env_name,
+                             entity=all_args.user_name,
+                             notes=socket.gethostname(),
+                             name=str(all_args.algorithm_name) + "_" +
+                                  str(all_args.experiment_name) +
+                                  "_seed" + str(all_args.seed),
+                             group=all_args.map_name,
+                             dir=str(run_dir),
+                             job_type="training",
+                             reinit=True,
+                             resume="must")
+        else:
+            run = wandb.init(config=all_args,
+                             project=all_args.env_name,
+                             entity=all_args.user_name,
+                             notes=socket.gethostname(),
+                             name=str(all_args.algorithm_name) + "_" +
+                                  str(all_args.experiment_name) +
+                                  "_seed" + str(all_args.seed),
+                             group=all_args.map_name,
+                             dir=str(run_dir),
+                             job_type="training",
+                             reinit=True,
+                             resume=True)
     else:
         if not run_dir.exists():
             curr_run = 'run1'

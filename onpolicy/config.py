@@ -32,6 +32,8 @@ def get_config():
             [for wandb usage], to specify user's name for simply collecting training data.
         --use_wandb
             [for wandb usage], by default True, will log date to wandb server. or else will use tensorboard to log data.
+        --wandb_resume_run_id
+            [for wandb usage], by default None, to specify run id to resume training.
     
     Env parameters:
         --env_name <str>
@@ -199,6 +201,7 @@ def get_config():
                         help='Number of environment steps to train (default: 10e6)')
     parser.add_argument("--user_name", type=str, default='marl',help="[for wandb usage], to specify user's name for simply collecting training data.")
     parser.add_argument("--use_wandb", action='store_false', default=True, help="[for wandb usage], by default True, will log date to wandb server. or else will use tensorboard to log data.")
+    parser.add_argument("--wandb_resume_run_id", type=str, default=None, help="[for wandb usage], by default None, to specify run id to resume training")
 
     # env parameters
     parser.add_argument("--env_name", type=str, default='StarCraft2', help="specify the name of environment")

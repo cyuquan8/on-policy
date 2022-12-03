@@ -169,6 +169,10 @@ def main(args):
         from onpolicy.runner.separated.smac_runner import SMACRunner as Runner
 
     runner = Runner(config)
+
+    if wandb.run.resumed:
+        runner.restore()
+
     runner.run()
 
     # post process

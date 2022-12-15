@@ -19,8 +19,8 @@ class SharedGNNReplayBuffer(object):
         self.recurrent_N = args.recurrent_N
         self.gamma = args.gamma
         self.gae_lambda = args.gae_lambda
-        self.num_somu_lstm = args.num_somu_lstm
-        self.num_scmu_lstm = args.num_scmu_lstm
+        self.somu_num_layers = args.somu_num_layers
+        self.scmu_num_layers = args.scmu_num_layers
         self.somu_lstm_hidden_size = args.somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.scmu_lstm_hidden_size
         self.num_agents = num_agents
@@ -38,33 +38,33 @@ class SharedGNNReplayBuffer(object):
         if type(share_obs_shape[-1]) == list:
             share_obs_shape = share_obs_shape[:1]
 
-        self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *share_obs_shape),
+        self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, self.num_agents, *share_obs_shape),
                                   dtype=np.float32)
         self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
 
         self.somu_hidden_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.somu_cell_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_hidden_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_cell_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
 
         self.rnn_states_critic = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, self.recurrent_N, self.hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size),
             dtype=np.float32)
 
         self.value_preds = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         self.returns = np.zeros_like(self.value_preds)
 
         if act_space.__class__.__name__ == 'Discrete':
-            self.available_actions = np.ones((self.episode_length + 1, self.n_rollout_threads, num_agents, act_space.n),
+            self.available_actions = np.ones((self.episode_length + 1, self.n_rollout_threads, self.num_agents, act_space.n),
                                              dtype=np.float32)
         else:
             self.available_actions = None
@@ -72,13 +72,13 @@ class SharedGNNReplayBuffer(object):
         act_shape = get_shape_from_act_space(act_space)
 
         self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
+            (self.episode_length, self.n_rollout_threads, self.num_agents, act_shape), dtype=np.float32)
         self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
+            (self.episode_length, self.n_rollout_threads, self.num_agents, act_shape), dtype=np.float32)
         self.rewards = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
+            (self.episode_length, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
-        self.masks = np.ones((self.episode_length + 1, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
+        self.masks = np.ones((self.episode_length + 1, self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         self.bad_masks = np.ones_like(self.masks)
         self.active_masks = np.ones_like(self.masks)
 
@@ -258,83 +258,19 @@ class SharedGNNReplayBuffer(object):
         :param num_mini_batch: (int) number of minibatches to split the batch into.
         :param mini_batch_size: (int) number of samples in each minibatch.
         """
-        # episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
-        # batch_size = n_rollout_threads * episode_length * num_agents
-
-        # if mini_batch_size is None:
-        #     assert batch_size >= num_mini_batch, (
-        #         "PPO requires the number of processes ({}) "
-        #         "* number of steps ({}) * number of agents ({}) = {} "
-        #         "to be greater than or equal to the number of PPO mini batches ({})."
-        #         "".format(n_rollout_threads, episode_length, num_agents,
-        #                   n_rollout_threads * episode_length * num_agents,
-        #                   num_mini_batch))
-        #     mini_batch_size = batch_size // num_mini_batch
-
-        # rand = torch.randperm(batch_size).numpy()
-        # sampler = [rand[i * mini_batch_size:(i + 1) * mini_batch_size] for i in range(num_mini_batch)]
-
-        # share_obs = self.share_obs[:-1].reshape(-1, *self.share_obs.shape[3:])
-        # obs = self.obs[:-1].reshape(-1, *self.obs.shape[3:])
-        # somu_hidden_states_actor = self.somu_hidden_states_actor[:-1].reshape(-1, *self.somu_hidden_states_actor.shape[3:])
-        # somu_cell_states_actor = self.somu_cell_states_actor[:-1].reshape(-1, *self.somu_cell_states_actor.shape[3:])
-        # scmu_hidden_states_actor = self.scmu_hidden_states_actor[:-1].reshape(-1, *self.scmu_hidden_states_actor.shape[3:])
-        # scmu_cell_states_actor = self.scmu_cell_states_actor[:-1].reshape(-1, *self.scmu_cell_states_actor.shape[3:])
-        # rnn_states_critic = self.rnn_states_critic[:-1].reshape(-1, *self.rnn_states_critic.shape[3:])
-        # actions = self.actions.reshape(-1, self.actions.shape[-1])
-        # if self.available_actions is not None:
-        #     available_actions = self.available_actions[:-1].reshape(-1, self.available_actions.shape[-1])
-        # value_preds = self.value_preds[:-1].reshape(-1, 1)
-        # returns = self.returns[:-1].reshape(-1, 1)
-        # masks = self.masks[:-1].reshape(-1, 1)
-        # active_masks = self.active_masks[:-1].reshape(-1, 1)
-        # action_log_probs = self.action_log_probs.reshape(-1, self.action_log_probs.shape[-1])
-        # advantages = advantages.reshape(-1, 1)
-
-        # for indices in sampler:
-        #     # obs size [T+1 N M Dim]-->[T N M Dim]-->[T*N*M,Dim]-->[index,Dim]
-        #     share_obs_batch = share_obs[indices]
-        #     obs_batch = obs[indices]
-        #     somu_hidden_states_actor_batch = somu_hidden_states_actor[indices]
-        #     somu_cell_states_actor_batch = somu_cell_states_actor[indices]
-        #     scmu_hidden_states_actor_batch = scmu_hidden_states_actor[indices]
-        #     scmu_cell_states_actor_batch = scmu_cell_states_actor[indices]
-        #     rnn_states_critic_batch = rnn_states_critic[indices]
-        #     actions_batch = actions[indices]
-        #     if self.available_actions is not None:
-        #         available_actions_batch = available_actions[indices]
-        #     else:
-        #         available_actions_batch = None
-        #     value_preds_batch = value_preds[indices]
-        #     return_batch = returns[indices]
-        #     masks_batch = masks[indices]
-        #     active_masks_batch = active_masks[indices]
-        #     old_action_log_probs_batch = action_log_probs[indices]
-        #     if advantages is None:
-        #         adv_targ = None
-        #     else:
-        #         adv_targ = advantages[indices]
-
-        #     yield share_obs_batch, obs_batch, somu_hidden_states_actor_batch, somu_cell_states_actor_batch, \
-        #           scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, rnn_states_critic_batch, actions_batch, \
-        #           value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
-        #           adv_targ, available_actions_batch
-
-        episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
-        batch_size = n_rollout_threads * episode_length * num_agents
+        batch_size = self.n_rollout_threads * self.episode_length * self.num_agents
 
         if mini_batch_size is None:
             assert batch_size >= num_mini_batch, (
                 "PPO requires the number of processes ({}) "
                 "* number of steps ({}) * number of agents ({}) = {} "
                 "to be greater than or equal to the number of PPO mini batches ({})."
-                "".format(n_rollout_threads, episode_length, num_agents,
-                          n_rollout_threads * episode_length * num_agents,
+                "".format(self.n_rollout_threads, self.episode_length, self.num_agents,
+                          self.n_rollout_threads * self.episode_length * self.num_agents,
                           num_mini_batch))
             mini_batch_size = batch_size // num_mini_batch
 
-        rand = torch.randperm(batch_size // num_agents).numpy()
-        # rand = torch.arange(batch_size // num_agents).numpy()
+        rand = torch.randperm(batch_size // self.num_agents).numpy()
         sampler = [rand[i * mini_batch_size:(i + 1) * mini_batch_size] for i in range(num_mini_batch)]
 
         share_obs = self.share_obs[:-1].reshape(-1, self.num_agents, *self.share_obs.shape[3:])

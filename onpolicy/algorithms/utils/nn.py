@@ -263,7 +263,7 @@ class DGCNLayers(NNLayers):
         """
         # add layer dimension to initial input
         x = T.unsqueeze(x, 1)
-
+    
         # iterate over each block
         for block in self.blocks:
             # output y with shape [num_nodes, out_channels]

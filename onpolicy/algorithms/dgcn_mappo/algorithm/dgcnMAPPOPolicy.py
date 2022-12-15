@@ -52,10 +52,10 @@ class DGCN_MAPPOPolicy:
         Compute actions and value function predictions for the given inputs.
         :param cent_obs (np.ndarray): centralized input to the critic.
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
-        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
-        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
-        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu network.
         :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic.
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
@@ -101,10 +101,10 @@ class DGCN_MAPPOPolicy:
         Get action logprobs / entropy and value function predictions for actor update.
         :param cent_obs (np.ndarray): centralized input to the critic.
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
-        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
-        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
-        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu network.
         :param rnn_states_critic: (np.ndarray) if critic is RNN, RNN states for critic.
         :param action: (np.ndarray) actions whose log probabilites and entropy to compute.
         :param masks: (np.ndarray) denotes points at which RNN states should be reset.
@@ -135,10 +135,10 @@ class DGCN_MAPPOPolicy:
         """
         Compute actions using the given inputs.
         :param obs (np.ndarray): local agent inputs to the actor.
-        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu (LSTMCell) network.
-        :param somu_cell_states_actor: (np.ndarray) cell states for somu (LSTMCell) network.
-        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
-        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu (LSTMCell) network.
+        :param somu_hidden_states_actor: (np.ndarray) hidden states for somu network.
+        :param somu_cell_states_actor: (np.ndarray) cell states for somu network.
+        :param scmu_hidden_states_actor: (np.ndarray) hidden states for scmu network.
+        :param scmu_cell_states_actor: (np.ndarray) hidden states for scmu network.
         :param available_actions: (np.ndarray) denotes which actions are available to agent
                                   (if None, all actions available)
         :param deterministic: (bool) whether the action should be mode of distribution or should be sampled.

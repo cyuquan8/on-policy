@@ -80,14 +80,14 @@ def get_config():
     DGCN network parameters:
         --n_dgcn_layers <int>
             Number of DGCN layers for DGCN actor network, (default: 3)
-        --num_somu_lstm <int>
-            Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 2)
+        --somu_num_layers <int>
+            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network, (default: 3)
         --somu_lstm_hidden_size <int>
             Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 128)
         --somu_multi_att_num_heads <int>
             Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network, (default: 2)
-        --num_scmu_lstm
-            Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 2)
+        --scmu_num_layers
+            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in DGCN actor network, (default: 3)
         --scmu_lstm_hidden_size
             Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network, (default: 128)
         --scmu_multi_att_num_heads
@@ -95,7 +95,7 @@ def get_config():
         --actor_fc_output_dims
             Hidden Size for MLP layers in DGCN actor network, (default: 128)
         --n_actor_layers
-            Number of MLP layers in DGCN actor network, (default: 2)
+            Number of MLP layers in DGCN actor network, (default: 3)
         --knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
 
@@ -238,10 +238,10 @@ def get_config():
 
     # dgcn network parameters
     parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor network")
-    parser.add_argument("--num_somu_lstm", type=int, default=3, help="Number of Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--somu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network")
     parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
     parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network")
-    parser.add_argument("--num_scmu_lstm", type=int, default=3, help="Number of Self Communication Memory Unit (SOMU) LSTMs in DGCN actor network")
+    parser.add_argument("--scmu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in DGCN actor network")
     parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network")
     parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
     parser.add_argument("--actor_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor network")

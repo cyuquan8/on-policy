@@ -9,7 +9,7 @@ class DGCN_MAPPO():
     """
     Trainer class for MAPPO to update policies.
     :param args: (argparse.Namespace) arguments containing relevant model, policy, and env information.
-    :param policy: (R_MAPPO_Policy) policy to update.
+    :param policy: (dgcn_MAPPO_Policy) policy to update.
     :param device: (torch.device) specifies the device to run on (cpu/gpu).
     """
     def __init__(self,

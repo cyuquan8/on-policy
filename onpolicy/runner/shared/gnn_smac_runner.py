@@ -115,26 +115,49 @@ class GNNSMACRunner(GNNRunner):
     def collect(self, step):
         self.trainer.prep_rollout()
         
+        # value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
+        # scmu_hidden_states_actor, scmu_cell_states_actor, rnn_state_critic \
+        #     = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
+        #                                       np.concatenate(self.buffer.obs[step]),
+        #                                       np.concatenate(self.buffer.somu_hidden_states_actor[step]),
+        #                                       np.concatenate(self.buffer.somu_cell_states_actor[step]),
+        #                                       np.concatenate(self.buffer.scmu_hidden_states_actor[step]),
+        #                                       np.concatenate(self.buffer.scmu_cell_states_actor[step]),
+        #                                       np.concatenate(self.buffer.rnn_states_critic[step]),
+        #                                       np.concatenate(self.buffer.masks[step]),
+        #                                       np.concatenate(self.buffer.available_actions[step]),
+        #                                       self.knn)
+
         value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, rnn_state_critic \
             = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
-                                              np.concatenate(self.buffer.obs[step]),
-                                              np.concatenate(self.buffer.somu_hidden_states_actor[step]),
-                                              np.concatenate(self.buffer.somu_cell_states_actor[step]),
-                                              np.concatenate(self.buffer.scmu_hidden_states_actor[step]),
-                                              np.concatenate(self.buffer.scmu_cell_states_actor[step]),
+                                              self.buffer.obs[step],
+                                              self.buffer.somu_hidden_states_actor[step],
+                                              self.buffer.somu_cell_states_actor[step],
+                                              self.buffer.scmu_hidden_states_actor[step],
+                                              self.buffer.scmu_cell_states_actor[step],
                                               np.concatenate(self.buffer.rnn_states_critic[step]),
-                                              np.concatenate(self.buffer.masks[step]),
-                                              np.concatenate(self.buffer.available_actions[step]),
+                                              self.buffer.masks[step],
+                                              self.buffer.available_actions[step],
                                               self.knn)
-        # [self.envs, agents, dim]
+
+        # # [self.envs, agents, dim]
+        # values = np.array(np.split(_t2n(value), self.n_rollout_threads))
+        # actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
+        # action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
+        # somu_hidden_states_actor = np.array(np.split(_t2n(somu_hidden_states_actor), self.n_rollout_threads))
+        # somu_cell_states_actor = np.array(np.split(_t2n(somu_cell_states_actor), self.n_rollout_threads))
+        # scmu_hidden_states_actor = np.array(np.split(_t2n(scmu_hidden_states_actor), self.n_rollout_threads))
+        # scmu_cell_states_actor = np.array(np.split(_t2n(scmu_cell_states_actor), self.n_rollout_threads))
+        # rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
+
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
-        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
-        action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
-        somu_hidden_states_actor = np.array(np.split(_t2n(somu_hidden_states_actor), self.n_rollout_threads))
-        somu_cell_states_actor = np.array(np.split(_t2n(somu_cell_states_actor), self.n_rollout_threads))
-        scmu_hidden_states_actor = np.array(np.split(_t2n(scmu_hidden_states_actor), self.n_rollout_threads))
-        scmu_cell_states_actor = np.array(np.split(_t2n(scmu_cell_states_actor), self.n_rollout_threads))
+        actions = _t2n(action)
+        action_log_probs = _t2n(action_log_prob)
+        somu_hidden_states_actor = _t2n(somu_hidden_states_actor)
+        somu_cell_states_actor = _t2n(somu_cell_states_actor)
+        scmu_hidden_states_actor = _t2n(scmu_hidden_states_actor)
+        scmu_cell_states_actor = _t2n(scmu_cell_states_actor)
         rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
 
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
@@ -189,10 +212,10 @@ class GNNSMACRunner(GNNRunner):
 
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
 
         while True:
             self.trainer.prep_rollout()
@@ -218,10 +241,10 @@ class GNNSMACRunner(GNNRunner):
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
-            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_somu_lstm, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.num_scmu_lstm, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
 
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:

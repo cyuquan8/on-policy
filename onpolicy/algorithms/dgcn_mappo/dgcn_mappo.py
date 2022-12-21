@@ -29,6 +29,8 @@ class DGCN_MAPPO():
         self.entropy_coef = args.entropy_coef
         self.max_grad_norm = args.max_grad_norm       
         self.huber_delta = args.huber_delta
+        self.data_chunk_length = args.data_chunk_length
+        self.num_agents = args.num_agents
         self.knn = args.knn
 
         self._use_recurrent_policy = args.use_recurrent_policy
@@ -103,9 +105,10 @@ class DGCN_MAPPO():
         :return imp_weights: (torch.Tensor) importance sampling weights.
         """
         share_obs_batch, obs_batch, somu_hidden_states_actor_batch, somu_cell_states_actor_batch, \
-        scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, rnn_states_critic_batch, actions_batch, \
-        value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
-        adv_targ, available_actions_batch = sample
+        scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, somu_hidden_states_critic_batch, \
+        somu_cell_states_critic_batch, scmu_hidden_states_critic_batch, scmu_cell_states_critic_batch, \
+        actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, \
+        old_action_log_probs_batch, adv_targ, available_actions_batch = sample
 
         old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
         adv_targ = check(adv_targ).to(**self.tpdv)
@@ -120,12 +123,30 @@ class DGCN_MAPPO():
                                                                               somu_cell_states_actor_batch,
                                                                               scmu_hidden_states_actor_batch,
                                                                               scmu_cell_states_actor_batch,
-                                                                              rnn_states_critic_batch, 
+                                                                              somu_hidden_states_critic_batch,
+                                                                              somu_cell_states_critic_batch,
+                                                                              scmu_hidden_states_critic_batch,
+                                                                              scmu_cell_states_critic_batch,
                                                                               actions_batch, 
                                                                               masks_batch, 
                                                                               available_actions_batch,
                                                                               active_masks_batch,
                                                                               self.knn)
+
+        # reshape
+        mini_batch_size = old_action_log_probs_batch.shape[0]
+        old_action_log_probs_batch = old_action_log_probs_batch.reshape(mini_batch_size *\
+                                                                        self.data_chunk_length *\
+                                                                        self.num_agents, -1)
+        adv_targ = adv_targ.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+        value_preds_batch = value_preds_batch.reshape(mini_batch_size *\
+                                                      self.data_chunk_length *\
+                                                      self.num_agents, -1)
+        return_batch = return_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+        active_masks_batch = active_masks_batch.reshape(mini_batch_size *\
+                                                        self.data_chunk_length *\
+                                                        self.num_agents, -1)
+
         # actor update
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
        

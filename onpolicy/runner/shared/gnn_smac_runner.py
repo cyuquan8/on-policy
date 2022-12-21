@@ -31,13 +31,15 @@ class GNNSMACRunner(GNNRunner):
             for step in range(self.episode_length):
                 # Sample actions
                 values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
-                scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic = self.collect(step)
+                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
+                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = self.collect(step)
 
                 # Obser reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
-                       scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic
+                       scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
+                       somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
 
                 # insert data into buffer
                 self.insert(data)
@@ -115,58 +117,44 @@ class GNNSMACRunner(GNNRunner):
     def collect(self, step):
         self.trainer.prep_rollout()
         
-        # value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
-        # scmu_hidden_states_actor, scmu_cell_states_actor, rnn_state_critic \
-        #     = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
-        #                                       np.concatenate(self.buffer.obs[step]),
-        #                                       np.concatenate(self.buffer.somu_hidden_states_actor[step]),
-        #                                       np.concatenate(self.buffer.somu_cell_states_actor[step]),
-        #                                       np.concatenate(self.buffer.scmu_hidden_states_actor[step]),
-        #                                       np.concatenate(self.buffer.scmu_cell_states_actor[step]),
-        #                                       np.concatenate(self.buffer.rnn_states_critic[step]),
-        #                                       np.concatenate(self.buffer.masks[step]),
-        #                                       np.concatenate(self.buffer.available_actions[step]),
-        #                                       self.knn)
-
         value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
-        scmu_hidden_states_actor, scmu_cell_states_actor, rnn_state_critic \
-            = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
-                                              self.buffer.obs[step],
-                                              self.buffer.somu_hidden_states_actor[step],
-                                              self.buffer.somu_cell_states_actor[step],
-                                              self.buffer.scmu_hidden_states_actor[step],
-                                              self.buffer.scmu_cell_states_actor[step],
-                                              np.concatenate(self.buffer.rnn_states_critic[step]),
-                                              self.buffer.masks[step],
-                                              self.buffer.available_actions[step],
-                                              self.knn)
+        scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic \
+        = self.trainer.policy.get_actions(self.buffer.share_obs[step],
+                                          self.buffer.obs[step],
+                                          self.buffer.somu_hidden_states_actor[step],
+                                          self.buffer.somu_cell_states_actor[step],
+                                          self.buffer.scmu_hidden_states_actor[step],
+                                          self.buffer.scmu_cell_states_actor[step],
+                                          self.buffer.somu_hidden_states_critic[step],
+                                          self.buffer.somu_cell_states_critic[step],
+                                          self.buffer.scmu_hidden_states_critic[step],
+                                          self.buffer.scmu_cell_states_critic[step],
+                                          self.buffer.masks[step],
+                                          self.buffer.available_actions[step],
+                                          self.knn)
 
-        # # [self.envs, agents, dim]
-        # values = np.array(np.split(_t2n(value), self.n_rollout_threads))
-        # actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
-        # action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
-        # somu_hidden_states_actor = np.array(np.split(_t2n(somu_hidden_states_actor), self.n_rollout_threads))
-        # somu_cell_states_actor = np.array(np.split(_t2n(somu_cell_states_actor), self.n_rollout_threads))
-        # scmu_hidden_states_actor = np.array(np.split(_t2n(scmu_hidden_states_actor), self.n_rollout_threads))
-        # scmu_cell_states_actor = np.array(np.split(_t2n(scmu_cell_states_actor), self.n_rollout_threads))
-        # rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
-
-        values = np.array(np.split(_t2n(value), self.n_rollout_threads))
+        values = _t2n(value)
         actions = _t2n(action)
         action_log_probs = _t2n(action_log_prob)
         somu_hidden_states_actor = _t2n(somu_hidden_states_actor)
         somu_cell_states_actor = _t2n(somu_cell_states_actor)
         scmu_hidden_states_actor = _t2n(scmu_hidden_states_actor)
         scmu_cell_states_actor = _t2n(scmu_cell_states_actor)
-        rnn_states_critic = np.array(np.split(_t2n(rnn_state_critic), self.n_rollout_threads))
+        somu_hidden_states_critic = _t2n(somu_hidden_states_critic)
+        somu_cell_states_critic = _t2n(somu_cell_states_critic)
+        scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic)
+        scmu_cell_states_critic = _t2n(scmu_cell_states_critic)
 
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
-               scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic
+               scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
+               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
 
     def insert(self, data):
         obs, share_obs, rewards, dones, infos, available_actions, \
         values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
-        scmu_hidden_states_actor, scmu_cell_states_actor, rnn_states_critic = data
+        scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = data
         
         dones_env = np.all(dones, axis=1)
 
@@ -177,7 +165,11 @@ class GNNSMACRunner(GNNRunner):
         somu_cell_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.somu_cell_states_actor.shape[3:]), dtype=np.float32)
         scmu_hidden_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_hidden_states_actor.shape[3:]), dtype=np.float32)
         scmu_cell_states_actor[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_cell_states_actor.shape[3:]), dtype=np.float32)
-        rnn_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
+
+        somu_hidden_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.somu_hidden_states_critic.shape[3:]), dtype=np.float32)
+        somu_cell_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.somu_cell_states_critic.shape[3:]), dtype=np.float32)
+        scmu_hidden_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_hidden_states_critic.shape[3:]), dtype=np.float32)
+        scmu_cell_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_cell_states_critic.shape[3:]), dtype=np.float32)
 
         active_masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         active_masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
@@ -191,8 +183,9 @@ class GNNSMACRunner(GNNRunner):
             share_obs = obs
 
         self.buffer.insert(share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, \
-                           scmu_cell_states_actor,rnn_states_critic, actions, action_log_probs, values, rewards, masks, \
-                           bad_masks, active_masks, available_actions)
+                           scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, \
+                           scmu_cell_states_critic, actions, action_log_probs, values, rewards, masks, bad_masks, active_masks, \
+                           available_actions)
 
     def log_train(self, train_infos, total_num_steps):
         train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)
@@ -216,25 +209,28 @@ class GNNSMACRunner(GNNRunner):
         eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
         eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
             self.trainer.prep_rollout()
             eval_actions, eval_somu_hidden_states_actor, eval_somu_cell_states_actor, eval_scmu_hidden_states_actor, eval_scmu_cell_states_actor = \
-                self.trainer.policy.act(np.concatenate(eval_obs),
-                                        np.concatenate(eval_somu_hidden_states_actor),
-                                        np.concatenate(eval_somu_cell_states_actor),
-                                        np.concatenate(eval_scmu_hidden_states_actor),
-                                        np.concatenate(eval_scmu_cell_states_actor),
-                                        np.concatenate(eval_available_actions),
+                self.trainer.policy.act(eval_obs,
+                                        eval_somu_hidden_states_actor,
+                                        eval_somu_cell_states_actor,
+                                        eval_scmu_hidden_states_actor,
+                                        eval_scmu_cell_states_actor,
+                                        eval_masks,
+                                        eval_available_actions,
                                         deterministic=True,
                                         knn=self.knn)
-            eval_actions = np.array(np.split(_t2n(eval_actions), self.n_eval_rollout_threads))
-            eval_somu_hidden_states_actor = np.array(np.split(_t2n(eval_somu_hidden_states_actor), self.n_eval_rollout_threads))
-            eval_somu_cell_states_actor = np.array(np.split(_t2n(eval_somu_cell_states_actor), self.n_eval_rollout_threads))
-            eval_scmu_hidden_states_actor = np.array(np.split(_t2n(eval_scmu_hidden_states_actor), self.n_eval_rollout_threads))
-            eval_scmu_cell_states_actor = np.array(np.split(_t2n(eval_scmu_cell_states_actor), self.n_eval_rollout_threads))
+            
+            eval_actions = _t2n(eval_actions)
+            eval_somu_hidden_states_actor = _t2n(eval_somu_hidden_states_actor)
+            eval_somu_cell_states_actor = _t2n(eval_somu_cell_states_actor)
+            eval_scmu_hidden_states_actor = _t2n(eval_scmu_hidden_states_actor)
+            eval_scmu_cell_states_actor = _t2n(eval_scmu_cell_states_actor)
 
-            # Obser reward and next obs
+            # Observe reward and next obs
             eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
                 eval_actions)
             one_episode_rewards.append(eval_rewards)
@@ -245,6 +241,8 @@ class GNNSMACRunner(GNNRunner):
             eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
             eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
             eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:

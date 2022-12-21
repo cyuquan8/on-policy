@@ -92,10 +92,10 @@ def get_config():
             Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network, (default: 128)
         --scmu_multi_att_num_heads
             Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network, (default: 2)
-        --actor_fc_output_dims
-            Hidden Size for MLP layers in DGCN actor network, (default: 128)
-        --n_actor_layers
-            Number of MLP layers in DGCN actor network, (default: 3)
+        --fc_output_dims
+            Hidden Size for MLP layers in DGCN actor and critic network, (default: 128)
+        --n_fc_layers
+            Number of MLP layers in DGCN actor and critic network, (default: 3)
         --knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
 
@@ -227,8 +227,8 @@ def get_config():
                         help="Number of layers for actor/critic networks")
     parser.add_argument("--use_ReLU", action='store_false',
                         default=True, help="Whether to use ReLU")
-    parser.add_argument("--use_popart", action='store_true', default=False, help="by default False, use PopArt to normalize rewards.")
-    parser.add_argument("--use_valuenorm", action='store_false', default=True, help="by default True, use running mean and std to normalize rewards.")
+    parser.add_argument("--use_popart", action='store_true', default=True, help="by default False, use PopArt to normalize rewards.")
+    parser.add_argument("--use_valuenorm", action='store_false', default=False, help="by default True, use running mean and std to normalize rewards.")
     parser.add_argument("--use_feature_normalization", action='store_false',
                         default=True, help="Whether to apply layernorm to the inputs")
     parser.add_argument("--use_orthogonal", action='store_true', default=True,
@@ -244,15 +244,15 @@ def get_config():
     parser.add_argument("--scmu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in DGCN actor network")
     parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network")
     parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
-    parser.add_argument("--actor_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor network")
-    parser.add_argument("--n_actor_layers", type=int, default=3, help="Number of MLP layers in DGCN actor network")
+    parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor and critic network")
+    parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in DGCN actor and critic network")
     parser.add_argument("--knn", action='store_false', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',
                         default=False, help='Whether to use a naive recurrent policy')
     parser.add_argument("--use_recurrent_policy", action='store_false',
-                        default=False, help='use a recurrent policy')
+                        default=True, help='use a recurrent policy')
     parser.add_argument("--recurrent_N", type=int, default=1, help="The number of recurrent layers.")
     parser.add_argument("--data_chunk_length", type=int, default=10,
                         help="Time length of chunks used to train a recurrent_policy")

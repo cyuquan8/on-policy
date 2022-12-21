@@ -48,8 +48,8 @@ class GNNRunner(object):
         self.scmu_num_layers = self.all_args.scmu_num_layers
         self.scmu_lstm_hidden_size = self.all_args.scmu_lstm_hidden_size
         self.scmu_multi_att_num_heads = self.all_args.scmu_multi_att_num_heads
-        self.actor_fc_output_dims = self.all_args.actor_fc_output_dims
-        self.n_actor_layers = self.all_args.n_actor_layers
+        self.fc_output_dims = self.all_args.fc_output_dims
+        self.n_fc_layers = self.all_args.n_fc_layers
         self.knn = self.all_args.knn
 
         # interval
@@ -124,10 +124,13 @@ class GNNRunner(object):
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
-        next_values = self.trainer.policy.get_values(np.concatenate(self.buffer.share_obs[-1]),
-                                                np.concatenate(self.buffer.rnn_states_critic[-1]),
-                                                np.concatenate(self.buffer.masks[-1]))
-        next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
+        next_values = self.trainer.policy.get_values(self.buffer.share_obs[-1],
+                                                     self.buffer.somu_hidden_states_critic[-1],
+                                                     self.buffer.somu_cell_states_critic[-1],
+                                                     self.buffer.scmu_hidden_states_critic[-1],
+                                                     self.buffer.scmu_cell_states_critic[-1],
+                                                     self.buffer.masks[-1])
+        next_values = _t2n(next_values)
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
     
     def train(self):

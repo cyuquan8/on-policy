@@ -82,7 +82,8 @@ class DGCNActor(nn.Module):
         # input channels are observations + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer and last layer of dgcn
         # fc_output_dims is the list of sizes of output channels fc_block
         self.fc_layers_list = nn.ModuleList([NNLayers(input_channels=self.obs_dims + self.obs_dims + \
-                                                                     self.somu_lstm_hidden_size + self.scmu_lstm_hidden_size, 
+                                                                     self.somu_num_layers * self.somu_lstm_hidden_size + \
+                                                                     self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                                       block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                                       activation_func='relu', dropout_p=0, weight_initialisation="default") 
                                              for _ in range(self.num_agents)]).to(device)
@@ -190,12 +191,12 @@ class DGCNActor(nn.Module):
             scmu_lstm_cell_state_list.append(scmu_hidden_cell_states_tup[1].transpose(0, 1))
             # somu_output / scmu_output [shape: (batch_size, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_state)],
             # somu_hidden_state / scmu_hidden_state [shape: (batch_size, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)] 
-            # --> multihead self attention [shape: (batch_size, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-            somu_output = self.somu_multi_att_layer_list[i](somu_output, somu_lstm_hidden_state_list[i], somu_lstm_hidden_state_list[i])[0]
-            scmu_output = self.somu_multi_att_layer_list[i](scmu_output, scmu_lstm_hidden_state_list[i], scmu_lstm_hidden_state_list[i])[0]
+            # --> multihead attention [shape: (batch_size, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+            somu_output = self.somu_multi_att_layer_list[i](somu_lstm_hidden_state_list[i], somu_output, somu_output)[0]
+            scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state_list[i], scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (batch_size, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)]
+            # [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((obs[:, i, :], dgcn_output[:, i, -1, :], somu_output.reshape(batch_size, -1), scmu_output.reshape(batch_size, -1)), dim=-1)
             # output [shape: (batch_size, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
             # fc_layers_list [shape: (batch_size, fc_output_dims)]
@@ -346,16 +347,16 @@ class DGCNActor(nn.Module):
                                                                                                                          self.scmu_num_layers, 
                                                                                                                          self.scmu_lstm_hidden_size)
            
-            # multihead self attention [shape: (mini_batch_size * data_chunk_length, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-            somu_output = self.somu_multi_att_layer_list[i](somu_output, somu_lstm_hidden_state, somu_lstm_hidden_state)[0]
-            scmu_output = self.somu_multi_att_layer_list[i](scmu_output, scmu_lstm_hidden_state, scmu_lstm_hidden_state)[0]
+            # multihead attention [shape: (mini_batch_size * data_chunk_length, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+            somu_output = self.somu_multi_att_layer_list[i](somu_lstm_hidden_state, somu_output, somu_output)[0]
+            scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state, scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (mini_batch_size * data_chunk_length, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)]
+            # [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((obs_batch[:, i, :], dgcn_output[:, :, i, -1, :].reshape(mini_batch_size * self.data_chunk_length, self.obs_dims), 
-                                somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_lstm_hidden_size), 
-                                scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)), dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
+                                somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_num_layers * self.somu_lstm_hidden_size), 
+                                scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_num_layers * self.scmu_lstm_hidden_size)), dim=-1)
+            # output [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)] --> 
             # fc_layers_list [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers_list[i](output)
             # fc_layers --> act [shape: (mini_batch_size * data_chunk_length, action_space_dim)], [shape: () == scalar]
@@ -443,7 +444,8 @@ class DGCNCritic(nn.Module):
         # input channels are observations + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer and last layer of dgcn
         # fc_output_dims is the list of sizes of output channels fc_block
         self.fc_layers_list = nn.ModuleList([NNLayers(input_channels=self.obs_dims + self.obs_dims + \
-                                                                     self.somu_lstm_hidden_size + self.scmu_lstm_hidden_size, 
+                                                                     self.somu_num_layers * self.somu_lstm_hidden_size + \
+                                                                     self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                                       block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                                       activation_func='relu', dropout_p=0, weight_initialisation="default") 
                                              for _ in range(self.num_agents)]).to(device)
@@ -453,9 +455,9 @@ class DGCNCritic(nn.Module):
 
         # final layer for value function using popart / mlp
         if self._use_popart:
-            self.v_out = init_(PopArt(self.num_agents * self.fc_output_dims, 1, device=device))
+            self.v_out = init_(PopArt(self.fc_output_dims, 1, device=device))
         else:
-            self.v_out = init_(nn.Linear(self.num_agents * self.fc_output_dims, 1))
+            self.v_out = init_(nn.Linear(self.fc_output_dims, 1))
         
         self.to(device)
 
@@ -496,12 +498,12 @@ class DGCNCritic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv) 
         # shape: (batch_size, num_agents, 1)
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1) 
-        # store somu and scmu hidden states and cell states and output before v_out
+        # store somu and scmu hidden states and cell states and values
         somu_lstm_hidden_state_list = []
         somu_lstm_cell_state_list = []
         scmu_lstm_hidden_state_list = []
         scmu_lstm_cell_state_list = []
-        output_list = []
+        values_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims)] --> dgcn_layers [shape: (batch_size, num_agents, n_dgcn_layers + 1, obs_dims)]
         dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index).reshape(batch_size, self.num_agents, self.n_dgcn_layers + 1, self.obs_dims)
@@ -548,27 +550,23 @@ class DGCNCritic(nn.Module):
             scmu_lstm_cell_state_list.append(scmu_hidden_cell_states_tup[1].transpose(0, 1))
             # somu_output / scmu_output [shape: (batch_size, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_state)],
             # somu_hidden_state / scmu_hidden_state [shape: (batch_size, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)] 
-            # --> multihead self attention [shape: (batch_size, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-            somu_output = self.somu_multi_att_layer_list[i](somu_output, somu_lstm_hidden_state_list[i], somu_lstm_hidden_state_list[i])[0]
-            scmu_output = self.somu_multi_att_layer_list[i](scmu_output, scmu_lstm_hidden_state_list[i], scmu_lstm_hidden_state_list[i])[0]
+            # --> multihead attention [shape: (batch_size, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+            somu_output = self.somu_multi_att_layer_list[i](somu_lstm_hidden_state_list[i], somu_output, somu_output)[0]
+            scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state_list[i], scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (batch_size, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)]
+            # [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((obs[:, i, :], dgcn_output[:, i, -1, :], somu_output.reshape(batch_size, -1), scmu_output.reshape(batch_size, -1)), dim=-1)
             # output [shape: (batch_size, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
             # fc_layers_list [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers_list[i](output)
-            output_list.append(output)
-
-        # [shape: (batch_size, num_agents * fc_output_dims)]
-        output = torch.stack(output_list, dim=1).reshape(batch_size, self.num_agents * self.fc_output_dims)
-        # output --> v_out [shape: (batch_size, num_agents, 1)]
-        # repeat the same value function for each agent
-        values = self.v_out(output).repeat(1, self.num_agents).reshape(batch_size, self.num_agents, 1)
+            # output --> v_out [shape: (batch_size, 1)]
+            values = self.v_out(output)
+            values_list.append(values)
        
         # [shape: (batch_size, num_agents, 1)]
         # [shape: (batch_size, num_agents, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-        return values, torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
+        return torch.stack(values_list, dim=1), torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
@@ -606,8 +604,8 @@ class DGCNCritic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
-        # store output before v_out
-        output_list = []
+        # list to store values
+        values_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] -->
         # dgcn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, n_dgcn_layers + 1, obs_dims)]
@@ -680,24 +678,21 @@ class DGCNCritic(nn.Module):
                                                                                                                          self.scmu_num_layers, 
                                                                                                                          self.scmu_lstm_hidden_size)
            
-            # multihead self attention [shape: (mini_batch_size * data_chunk_length, sequence_length=1, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-            somu_output = self.somu_multi_att_layer_list[i](somu_output, somu_lstm_hidden_state, somu_lstm_hidden_state)[0]
-            scmu_output = self.somu_multi_att_layer_list[i](scmu_output, scmu_lstm_hidden_state, scmu_lstm_hidden_state)[0]
+            # multihead attention [shape: (mini_batch_size * data_chunk_length, somu_num_layers / scmu_num_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+            somu_output = self.somu_multi_att_layer_list[i](somu_lstm_hidden_state, somu_output, somu_output)[0]
+            scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state, scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (mini_batch_size * data_chunk_length, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)]
+            # [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((obs_batch[:, i, :], dgcn_output[:, :, i, -1, :].reshape(mini_batch_size * self.data_chunk_length, self.obs_dims), 
-                                somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_lstm_hidden_size), 
-                                scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)), dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
+                                somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_num_layers * self.somu_lstm_hidden_size), 
+                                scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_num_layers * self.scmu_lstm_hidden_size)), dim=-1)
+            # output [shape: (batch_size, obs_dims + obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)] --> 
             # fc_layers_list [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers_list[i](output)
-            output_list.append(output)
+            # output --> v_out [shape: (mini_batch_size * data_chunk_length, 1)]
+            values = self.v_out(output)
+            values_list.append(values)
 
-        # [shape: (mini_batch_size * data_chunk_length, num_agents * fc_output_dims)]
-        output = torch.stack(output_list, dim=1).reshape(mini_batch_size * self.data_chunk_length, self.num_agents * self.fc_output_dims)
-        # output --> v_out [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
-        # repeat the same value function for each agent
-        values = self.v_out(output).repeat(1, self.num_agents).reshape(mini_batch_size * self.data_chunk_length * self.num_agents, 1)
-
-        return values
+        # [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
+        return torch.stack(values_list, dim=1).reshape(-1, 1)

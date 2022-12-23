@@ -48,7 +48,7 @@ class DGCNLinear(torch.nn.Module):
 
         """ function to reset model weights """
 
-        kaiming_uniform(self.weight, fan = self.weight.size(1), a = math.sqrt(5))
+        kaiming_uniform(self.weight, fan=self.weight.size(1), a=math.sqrt(5))
         uniform(self.weight.size(1), self.bias)
 
     def forward(self, src):
@@ -95,11 +95,11 @@ def restricted_softmax(src, dim: int=-1, margin: float=0.):
     function to calculate restricted softmax 
     """
     # find maximum positive exponent from src
-    src_max = torch.clamp(src.max(dim = dim, keepdim = True)[0], min = 0.)
+    src_max = torch.clamp(src.max(dim=dim, keepdim=True)[0], min=0.)
     # divide by e^(src_max)
     out = (src - src_max).exp()
     # essentially e^{src_i} / (1 + sum_j(e^(src_j))) 
-    out = out / (out.sum(dim = dim, keepdim = True) + (margin - src_max).exp())
+    out = out / (out.sum(dim=dim, keepdim=True) + (margin - src_max).exp())
 
     return out
 
@@ -146,9 +146,9 @@ class Attention(torch.nn.Module):
         # scale score by dimension of key
         score = score / math.sqrt(key.size(-1))
         # restricted softmax
-        score = restricted_softmax(score, dim = -1)
+        score = restricted_softmax(score, dim=-1)
         # apply dropout
-        score = F.dropout(score, p = self.dropout, training = self.training)
+        score = F.dropout(score, p=self.dropout, training=self.training)
 
         return torch.matmul(score, value)
 
@@ -163,7 +163,7 @@ class MultiHead(Attention):
     class for multi head attention  
     """
 
-    def __init__(self, in_channels, out_channels, heads = 1, groups = 1, dropout = 0, bias = True):
+    def __init__(self, in_channels, out_channels, heads=1, groups=1, dropout=0, bias=True):
         """ 
         class constructor to set attributes 
         """ 
@@ -259,8 +259,8 @@ class DGCNConv(MessagePassing):
     # typing 
     _alpha: OptTensor
 
-    def __init__(self, in_channels: int, out_channels: int, att_heads: int = 1, mul_att_heads: int = 1, groups: int = 1, concat: bool = True, negative_slope: float = 0.2, dropout: float = 0.0, 
-                 add_self_loops: bool = True, edge_dim: Optional[int] = None, fill_value: Union[float, Tensor, str] = 'mean', bias: bool = True, **kwargs):
+    def __init__(self, in_channels: int, out_channels: int, att_heads: int=1, mul_att_heads: int=1, groups: int=1, concat: bool=True, negative_slope: float=0.2, dropout: float=0.0, 
+                 add_self_loops: bool=True, edge_dim: Optional[int]=None, fill_value: Union[float, Tensor, str]='mean', bias: bool=True, **kwargs):
         """
         class constructor to set attributes
         """
@@ -298,14 +298,14 @@ class DGCNConv(MessagePassing):
         self.first_prop = True
 
         # linear layer for source nodes
-        self.lin = Linear(in_channels, att_heads * out_channels, bias = bias, weight_initializer = 'glorot')
+        self.lin = Linear(in_channels, att_heads * out_channels, bias=bias, weight_initializer='glorot')
         # parameter layer post leaky relu that is node independent
         self.att = Parameter(torch.Tensor(1, att_heads, out_channels))
 
         # check if there are edge dimensions
         if edge_dim is not None:
             # linear layer for edge dimensions
-            self.lin_edge = Linear(edge_dim, att_heads * out_channels, bias = False, weight_initializer = 'glorot')
+            self.lin_edge = Linear(edge_dim, att_heads * out_channels, bias=False, weight_initializer='glorot')
         else:
             self.lin_edge = None
 
@@ -348,7 +348,7 @@ class DGCNConv(MessagePassing):
         # reset the parameters for mutli head attention
         self.multi_head.reset_parameters()
 
-    def forward(self, x: Tensor, edge_index: Adj, edge_attr: OptTensor = None, return_attention_weights: bool = None):
+    def forward(self, x: Tensor, edge_index: Adj, edge_attr: OptTensor=None, return_attention_weights: bool=None):
         """ 
         function to conduct forward propagation 
         """
@@ -369,12 +369,12 @@ class DGCNConv(MessagePassing):
             # remove all self loops and their attributes
             edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
             # add self loops and correspoding edge attributes of self loops
-            edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value = self.fill_value, num_nodes = num_nodes)
+            edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value=self.fill_value, num_nodes=num_nodes)
         
         # set first pass boolean
         self.first_prop = True
         # first propagate based on gatv2 on current node embeddings: [num_nodes, num_heads, channels]
-        out = self.propagate(edge_index, x = None, x_layer = x_curr, edge_attr = edge_attr, size = None)
+        out = self.propagate(edge_index, x = None, x_layer=x_curr, edge_attr=edge_attr, size=None)
         # set first pass boolean
         self.first_prop = False
         
@@ -389,14 +389,14 @@ class DGCNConv(MessagePassing):
         # mean
         else:
             # obtain mean across heads: [num_nodes, channels]
-            out = out.mean(dim = 1)
+            out = out.mean(dim=1)
 
         # add bias if its exist
         if self.bias is not None:
             out += self.bias
         
         # second propagate based on dna on all layers of node beddings and output of first propagation from gatv2
-        out = self.propagate(edge_index, x = x, x_layer = out, edge_attr = edge_attr, size = None)
+        out = self.propagate(edge_index, x=x, x_layer=out, edge_attr=edge_attr, size=None)
 
         # check if there is need to return attention weights
         if isinstance(return_attention_weights, bool):
@@ -438,7 +438,7 @@ class DGCNConv(MessagePassing):
             # store attention weights
             self._alpha = alpha
             # apply dropout to attention weights
-            alpha = F.dropout(alpha, p = self.dropout, training = self.training)
+            alpha = F.dropout(alpha, p=self.dropout, training=self.training)
             
             # apply attention weights to target nodes: [num_edges, num_heads, out_channels] * [num_edges, num_heads, 1] --> [num_edges, num_heads, out_channels]
             return x_layer_j * alpha.unsqueeze(-1)

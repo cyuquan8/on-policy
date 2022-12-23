@@ -24,42 +24,61 @@ def activation_function(activation):
         ['none', nn.Identity()]
     ])[activation]
 
-def weights_initialisation_function_generator(weight_intialisation, 
+def weights_initialisation_function_generator(weight_initialisation, 
                                               activation_func, *args, **kwargs):
     """ 
     function that returns functions initialise weights according to specified 
     methods. 
     """
-    if weight_intialisation == "xavier_uniform":
+    if weight_initialisation == "xavier_uniform":
         def init_weight(m):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight, 
-                    gain=nn.init.calculate_gain(activation_func))
+                                        gain=nn.init.calculate_gain(activation_func))
         return init_weight
-    elif weight_intialisation == "xavier_normal":
+    elif weight_initialisation == "xavier_normal":
         def init_weight(m):
-            if isinstance(m, nn.Linear):  
-                nn.init.xavier_normal_(m.weight, gain=nn.init.calculate_gain(activation_func))
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight, 
+                                       gain=nn.init.calculate_gain(activation_func))
         return init_weight
-    elif weight_intialisation == "kaiming_uniform":
+    elif weight_initialisation == "kaiming_uniform":
         # recommend for relu / leaky relu
         assert (activation_func == "relu" or activation_func == "leaky_relu"), "Non-linearity recommended to be 'relu' or 'leaky_relu'"
         def init_weight(m):
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_uniform_(m.weight, a=kwargs.get("kaiming_a", math.sqrt(5)), mode=kwargs.get("kaiming_mode", "fan_in"), nonlinearity=activation_func)
+                nn.init.kaiming_uniform_(m.weight, 
+                                         a=kwargs.get("kaiming_a", math.sqrt(5)), 
+                                         mode=kwargs.get("kaiming_mode", "fan_in"), 
+                                         nonlinearity=activation_func)
         return init_weight
-    elif weight_intialisation == "kaiming_normal":
+    elif weight_initialisation == "kaiming_normal":
         # recommend for relu / leaky relu
         assert (activation_func == "relu" or activation_func == "leaky_relu"), "Non-linearity recommended to be 'relu' or 'leaky_relu'"
         def init_weight(m):
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, a=kwargs.get("kaiming_a", math.sqrt(5)), mode=kwargs.get("kaiming_mode", "fan_in"), nonlinearity=activation_func)
+                nn.init.kaiming_normal_(m.weight, 
+                                        a=kwargs.get("kaiming_a", math.sqrt(5)), 
+                                        mode=kwargs.get("kaiming_mode", "fan_in"), 
+                                        nonlinearity=activation_func)
         return init_weight
-    elif weight_intialisation == "uniform":
+    elif weight_initialisation == "uniform":
         def init_weight(m):
             if isinstance(m, nn.Linear):
-                nn.init.uniform_(m.weight, a=kwargs.get("uniform_lower_bound", 0.0), b=kwargs.get("uniform_upper_bound", 1.0))
-
+                nn.init.uniform_(m.weight, 
+                                 a=kwargs.get("uniform_lower_bound", 0.0), 
+                                 b=kwargs.get("uniform_upper_bound", 1.0))
+        return init_weight
+    elif weight_initialisation == "orthogonal":
+        def init_weight(m):
+            if isinstance(m, nn.Linear):
+                # matrix (orthogonal requires tensor of dim>=2)
+                if len(m.weight.shape) >= 2:
+                    nn.init.orthogonal_(m.weight, 
+                                        gain=nn.init.calculate_gain(activation_func))
+                # bias
+                else:
+                    nn.init.zeros_(m.weight) 
         return init_weight
     else:
         def init_weight(m):
@@ -113,8 +132,7 @@ class DGCNBlock(nn.Module):
     class to build DGCNBlock 
     """
 
-    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True, 
-                 weight_initialisation=None,activation_func =None):
+    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
         """ 
         class constructor for attributes of the DGCNBlock 
         """
@@ -148,58 +166,13 @@ class DGCNBlock(nn.Module):
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # dgcn block 
-                                        (DGCNConv(in_channels = input_channels, out_channels = output_channels, att_heads = att_heads, mul_att_heads = mul_att_heads, groups = groups, concat = concat,  
-                                                  negative_slope = negative_slope, dropout = dropout, add_self_loops = add_self_loops, edge_dim = edge_dim, fill_value = fill_value, bias = bias), 
+                                        (DGCNConv(in_channels=input_channels, out_channels=output_channels, att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, concat=concat,  
+                                                  negative_slope=negative_slope, dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, fill_value=fill_value, bias=bias), 
                                          'x, edge_index -> x'), 
                                         # graph norm
                                         (gnn.GraphNorm(self.output_channels * self.att_heads if concat == True else self.output_channels), 'x -> x')
                                     ]
         )  
-
-    def forward(self, x, edge_index):
-        """ 
-        function for forward pass of gatv2_block 
-        """
-        x = self.block(x, edge_index)
-        
-        return x
-
-class GATv2Block(nn.Module):
-    """ 
-    class to build GATv2Block 
-    """
-
-    def __init__(self, input_channels, output_channels, num_heads=1, concat=True, dropout=0.0, activation_func="relu"):
-        """ 
-        class constructor for attributes of the GATv2Block 
-        """
-        # inherit class constructor attributes from nn.Module
-        super().__init__()
-
-        # input and output channels for gatv2 (embedding dimension for each node)
-        self.input_channels = input_channels
-        self.output_channels = output_channels
-        # number of heads for gatv2
-        self.num_heads = num_heads
-        # boolean that when set to false, the multi-head attentions are averaged instead of concatenated
-        self.concat = concat
-        # dropout probablity
-        self.dropout = dropout
-        # activation function for after GATv2Conv 
-        self.activation_func = activation_func
-
-        # basic gatv2_block. input --> GATv2Conv --> GraphNorm --> activation func
-        self.block = gnn.Sequential('x, edge_index', 
-                                    [
-                                        # GATv2Conv 
-                                        (gnn.GATv2Conv(in_channels = self.input_channels, out_channels = self.output_channels, heads = self.num_heads, concat = concat, dropout = dropout), 
-                                         'x, edge_index -> x'), 
-                                        # graph norm
-                                        (gnn.GraphNorm(self.output_channels * self.num_heads if concat == True else self.output_channels), 'x -> x'),
-                                        # activation func
-                                        activation_function(self.activation_func)
-                                    ]
-        )
 
     def forward(self, x, edge_index):
         """ 

@@ -53,8 +53,7 @@ class DGCNActor(nn.Module):
         # dgcn layers
         self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims, block=DGCNBlock, 
                                       output_channels=[self.obs_dims for i in range(self.n_dgcn_layers)], 
-                                      concat=False, activation_func="relu", 
-                                      weight_initialisation="default")
+                                      concat=False)
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
@@ -85,7 +84,8 @@ class DGCNActor(nn.Module):
                                                                      self.somu_num_layers * self.somu_lstm_hidden_size + \
                                                                      self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                                       block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
-                                                      activation_func='relu', dropout_p=0, weight_initialisation="default") 
+                                                      activation_func='relu', dropout_p=0, 
+                                                      weight_initialisation="orthogonal" if self._use_orthogonal else "default") 
                                              for _ in range(self.num_agents)]).to(device)
 
         # final action layer for each agent
@@ -415,8 +415,7 @@ class DGCNCritic(nn.Module):
         # dgcn layers
         self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims, block=DGCNBlock, 
                                       output_channels=[self.obs_dims for i in range(self.n_dgcn_layers)], 
-                                      concat=False, activation_func="relu", 
-                                      weight_initialisation="default")
+                                      concat=False)
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
@@ -447,7 +446,8 @@ class DGCNCritic(nn.Module):
                                                                      self.somu_num_layers * self.somu_lstm_hidden_size + \
                                                                      self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                                       block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
-                                                      activation_func='relu', dropout_p=0, weight_initialisation="default") 
+                                                      activation_func='relu', dropout_p=0, 
+                                                      weight_initialisation="orthogonal" if self._use_orthogonal else "default") 
                                              for _ in range(self.num_agents)]).to(device)
 
         def init_(m):

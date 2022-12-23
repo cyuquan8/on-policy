@@ -79,7 +79,7 @@ def get_config():
 
     DGCN network parameters:
         --n_dgcn_layers <int>
-            Number of DGCN layers for DGCN actor network, (default: 3)
+            Number of DGCN layers for DGCN actor and critic network, (default: 3)
         --somu_num_layers <int>
             Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network, (default: 3)
         --somu_lstm_hidden_size <int>
@@ -227,8 +227,8 @@ def get_config():
                         help="Number of layers for actor/critic networks")
     parser.add_argument("--use_ReLU", action='store_false',
                         default=True, help="Whether to use ReLU")
-    parser.add_argument("--use_popart", action='store_true', default=True, help="by default False, use PopArt to normalize rewards.")
-    parser.add_argument("--use_valuenorm", action='store_false', default=False, help="by default True, use running mean and std to normalize rewards.")
+    parser.add_argument("--use_popart", action='store_true', default=False, help="by default False, use PopArt to normalize rewards.")
+    parser.add_argument("--use_valuenorm", action='store_false', default=True, help="by default True, use running mean and std to normalize rewards.")
     parser.add_argument("--use_feature_normalization", action='store_false',
                         default=True, help="Whether to apply layernorm to the inputs")
     parser.add_argument("--use_orthogonal", action='store_true', default=True,
@@ -237,7 +237,7 @@ def get_config():
                         help="The gain # of last action layer")
 
     # dgcn network parameters
-    parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor network")
+    parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor and critic network")
     parser.add_argument("--somu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network")
     parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
     parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network")

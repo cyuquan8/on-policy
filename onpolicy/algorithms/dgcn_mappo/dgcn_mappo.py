@@ -32,6 +32,7 @@ class DGCN_MAPPO():
         self.data_chunk_length = args.data_chunk_length
         self.num_agents = args.num_agents
         self.knn = args.knn
+        self.k = args.k
 
         self._use_recurrent_policy = args.use_recurrent_policy
         self._use_naive_recurrent = args.use_naive_recurrent_policy
@@ -131,7 +132,8 @@ class DGCN_MAPPO():
                                                                               masks_batch, 
                                                                               available_actions_batch,
                                                                               active_masks_batch,
-                                                                              self.knn)
+                                                                              self.knn,
+                                                                              self.k)
 
         # reshape
         mini_batch_size = old_action_log_probs_batch.shape[0]

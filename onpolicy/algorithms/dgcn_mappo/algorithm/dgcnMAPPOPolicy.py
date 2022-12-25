@@ -48,7 +48,7 @@ class DGCN_MAPPOPolicy:
     def get_actions(self, cent_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, 
                     scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, 
                     somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, 
-                    masks, available_actions=None, deterministic=False, knn=False):
+                    masks, available_actions=None, deterministic=False, knn=False, k=1):
         """
         Compute actions and value function predictions for the given inputs.
         :param cent_obs (np.ndarray): centralized input to the critic.
@@ -66,6 +66,7 @@ class DGCN_MAPPOPolicy:
                                   (if None, all actions available)
         :param deterministic: (bool) whether the action should be mode of distribution or should be sampled.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         :return actions: (torch.Tensor) actions to take.
@@ -88,7 +89,8 @@ class DGCN_MAPPOPolicy:
                                                                       masks, 
                                                                       available_actions,
                                                                       deterministic,
-                                                                      knn)
+                                                                      knn,
+                                                                      k)
         
         values, somu_hidden_states_critic, somu_cell_states_critic, \
         scmu_hidden_states_critic, scmu_cell_states_critic = self.critic(cent_obs, 
@@ -96,13 +98,15 @@ class DGCN_MAPPOPolicy:
                                                                          somu_cell_states_critic,
                                                                          scmu_hidden_states_critic,
                                                                          scmu_cell_states_critic, 
-                                                                         masks)
+                                                                         masks,
+                                                                         knn,
+                                                                         k)
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
 
     def get_values(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, 
-                   scmu_hidden_states_critic, scmu_cell_states_critic, masks):
+                   scmu_hidden_states_critic, scmu_cell_states_critic, masks, knn=False, k=1):
         """
         Get value function predictions.
         :param cent_obs (np.ndarray): centralized input to the critic.
@@ -111,6 +115,8 @@ class DGCN_MAPPOPolicy:
         :param scmu_hidden_states_critic: (np.ndarray) hidden states for scmu network.
         :param scmu_cell_states_critic: (np.ndarray) hidden states for scmu network.
         :param masks: (np.ndarray) denotes points at which somu, scmu hidden states should be reset.
+        :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         """
@@ -119,13 +125,15 @@ class DGCN_MAPPOPolicy:
                                          somu_cell_states_critic,
                                          scmu_hidden_states_critic,
                                          scmu_cell_states_critic, 
-                                         masks)
+                                         masks,
+                                         knn,
+                                         k)
         return values
 
     def evaluate_actions(self, cent_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, 
                          scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, 
                          somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, 
-                         action, masks, available_actions=None, active_masks=None, knn=False):
+                         action, masks, available_actions=None, active_masks=None, knn=False, k=1):
         """
         Get action logprobs / entropy and value function predictions for actor update.
         :param cent_obs (np.ndarray): centralized input to the critic.
@@ -144,6 +152,7 @@ class DGCN_MAPPOPolicy:
                                   (if None, all actions available)
         :param active_masks: (torch.Tensor) denotes whether an agent is active or dead.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
@@ -158,18 +167,22 @@ class DGCN_MAPPOPolicy:
                                                                      masks,
                                                                      available_actions,
                                                                      active_masks,
-                                                                     knn)
+                                                                     knn,
+                                                                     k)
 
         values = self.critic.evaluate_actions(cent_obs,
                                               somu_hidden_states_critic,
                                               somu_cell_states_critic,
                                               scmu_hidden_states_critic,
                                               scmu_cell_states_critic, 
-                                              masks)
+                                              masks,
+                                              knn,
+                                              k)
         return values, action_log_probs, dist_entropy
 
     def act(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
-            scmu_cell_states_actor, masks, available_actions=None, deterministic=False, knn=False):
+            scmu_cell_states_actor, masks, available_actions=None, deterministic=False, knn=False,
+            k=1):
         """
         Compute actions using the given inputs.
         :param obs (np.ndarray): local agent inputs to the actor.
@@ -182,6 +195,13 @@ class DGCN_MAPPOPolicy:
                                   (if None, all actions available)
         :param deterministic: (bool) whether the action should be mode of distribution or should be sampled.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
+
+        :return actions: (torch.Tensor) actions to take.
+        :return somu_hidden_states_actor: (torch.Tensor) hidden states for somu network.
+        :return somu_cell_states_actor: (torch.Tensor) cell states for somu network.
+        :return scmu_hidden_states_actor: (torch.Tensor) hidden states for scmu network.
+        :return scmu_cell_states_actor: (torch.Tensor) hidden states for scmu network.
         """
         actions, _ , somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor = self.actor(obs,
@@ -192,6 +212,7 @@ class DGCN_MAPPOPolicy:
                                                                       masks,  
                                                                       available_actions, 
                                                                       deterministic, 
-                                                                      knn)
+                                                                      knn,
+                                                                      k)
         return actions, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor,

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.data import Data, Batch
+from torch_geometric.nn import knn_graph
 from onpolicy.algorithms.utils.util import init, check, complete_graph_edge_index
 from onpolicy.algorithms.utils.single_act import SingleACTLayer
 from onpolicy.algorithms.utils.nn import DGCNLayers, MLPBlock, NNLayers, DGCNBlock
@@ -95,7 +96,7 @@ class DGCNActor(nn.Module):
         self.to(device)
         
     def forward(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, 
-                masks, available_actions=None, deterministic=False, knn=False):
+                masks, available_actions=None, deterministic=False, knn=False, k=1):
         """
         Compute actions from the given inputs.
         :param obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -108,6 +109,7 @@ class DGCNActor(nn.Module):
                                                               (if None, all actions available)
         :param deterministic: (bool) whether to sample from action distribution or return the mode.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return actions: (torch.Tensor) actions to take.
         :return action_log_probs: (torch.Tensor) log probabilities of taken actions.
@@ -117,7 +119,16 @@ class DGCNActor(nn.Module):
         :return scmu_cell_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu network.
         """
         if knn:
-            raise NotImplementedError
+            # shape: (batch_size, num_agents, obs_dims)  
+            obs = check(obs) 
+            batch_size = obs.shape[0]
+            # shape: (batch_size * num_agents, obs_dims)
+            obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
+            batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
+            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            obs = obs.to(**self.tpdv)  
+            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+                                            for i in range(batch_size)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
@@ -214,7 +225,7 @@ class DGCNActor(nn.Module):
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, 
-                         action, masks, available_actions=None, active_masks=None, knn=False):
+                         action, masks, available_actions=None, active_masks=None, knn=False, k=1):
         """
         Compute log probability and entropy of given actions.
         :param obs: (torch.Tensor) observation inputs into network.
@@ -228,12 +239,24 @@ class DGCNActor(nn.Module):
                                                               (if None, all actions available)
         :param active_masks: (torch.Tensor) denotes whether an agent is active or dead.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
         if knn:
-            raise NotImplementedError
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+            obs = check(obs)
+            mini_batch_size = obs.shape[0]
+            # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
+            obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
+            batch = torch.tensor([i // self.num_agents for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
+            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            obs = obs.to(**self.tpdv)
+            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
+            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
@@ -462,7 +485,7 @@ class DGCNCritic(nn.Module):
         self.to(device)
 
     def forward(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
-                scmu_cell_states_critic, masks, knn=False):
+                scmu_cell_states_critic, masks, knn=False, k=1):
         """
         Compute value function
         :param cent_obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -472,6 +495,7 @@ class DGCNCritic(nn.Module):
         :param scmu_cell_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param masks: (np.ndarray / torch.Tensor) mask tensor denoting if hidden states should be reinitialized to zeros.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         :return somu_hidden_states_critic: (torch.Tensor) hidden states for somu network.
@@ -480,7 +504,16 @@ class DGCNCritic(nn.Module):
         :return scmu_cell_states_critic: (torch.Tensor) hidden states for scmu network.
         """
         if knn:
-            raise NotImplementedError
+            # shape: (batch_size, num_agents, obs_dims)  
+            obs = check(cent_obs)
+            batch_size = obs.shape[0]
+            # shape: (batch_size * num_agents, obs_dims)
+            obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
+            batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
+            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            obs = obs.to(**self.tpdv)  
+            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+                                            for i in range(batch_size)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
@@ -574,7 +607,7 @@ class DGCNCritic(nn.Module):
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
-                         scmu_cell_states_critic, masks, knn=False):
+                         scmu_cell_states_critic, masks, knn=False, k=1):
         """
         Compute value function
         :param cent_obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -584,11 +617,23 @@ class DGCNCritic(nn.Module):
         :param scmu_cell_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param masks: (np.ndarray / torch.Tensor) mask tensor denoting if hidden states should be reinitialized to zeros.
         :param knn: (bool) whether to use k nearest neighbour to set up edge index.
+        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         """
         if knn:
-            raise NotImplementedError
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+            obs = check(cent_obs)
+            mini_batch_size = obs.shape[0]
+            # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
+            obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
+            batch = torch.tensor([i // self.num_agents for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
+            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            obs = obs.to(**self.tpdv)
+            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
+            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 

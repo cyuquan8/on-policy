@@ -51,6 +51,7 @@ class GNNRunner(object):
         self.fc_output_dims = self.all_args.fc_output_dims
         self.n_fc_layers = self.all_args.n_fc_layers
         self.knn = self.all_args.knn
+        self.k = self.all_args.k
 
         # interval
         self.save_interval = self.all_args.save_interval
@@ -129,7 +130,9 @@ class GNNRunner(object):
                                                      self.buffer.somu_cell_states_critic[-1],
                                                      self.buffer.scmu_hidden_states_critic[-1],
                                                      self.buffer.scmu_cell_states_critic[-1],
-                                                     self.buffer.masks[-1])
+                                                     self.buffer.masks[-1],
+                                                     self.knn,
+                                                     self.k)
         next_values = _t2n(next_values)
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
     

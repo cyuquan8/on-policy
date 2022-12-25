@@ -98,7 +98,9 @@ def get_config():
             Number of MLP layers in DGCN actor and critic network, (default: 3)
         --knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
-
+        --k
+            Number of Neighbours for K-Nearest Neighbour (default: 1)
+    
     Optimizer parameters:
         --lr <float>
             learning rate parameter,  (default: 5e-4, fixed).
@@ -246,7 +248,8 @@ def get_config():
     parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
     parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor and critic network")
     parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in DGCN actor and critic network")
-    parser.add_argument("--knn", action='store_false', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
+    parser.add_argument("--knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
+    parser.add_argument("--k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',
@@ -277,7 +280,7 @@ def get_config():
                         help='number of batches for ppo (default: 1)')
     parser.add_argument("--entropy_coef", type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
-    parser.add_argument("--value_loss_coef", type=float,
+    parser.add_argument("--value_loss_coef", type=float,    
                         default=0.5, help='value loss coefficient (default: 0.5)')
     parser.add_argument("--use_max_grad_norm",
                         action='store_false', default=True, help="by default, use max norm of gradients. If set, do not use.")

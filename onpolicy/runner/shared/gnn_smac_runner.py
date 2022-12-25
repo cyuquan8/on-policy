@@ -132,7 +132,8 @@ class GNNSMACRunner(GNNRunner):
                                           self.buffer.scmu_cell_states_critic[step],
                                           self.buffer.masks[step],
                                           self.buffer.available_actions[step],
-                                          self.knn)
+                                          self.knn,
+                                          self.k)
 
         values = _t2n(value)
         actions = _t2n(action)
@@ -222,7 +223,8 @@ class GNNSMACRunner(GNNRunner):
                                         eval_masks,
                                         eval_available_actions,
                                         deterministic=True,
-                                        knn=self.knn)
+                                        knn=self.knn,
+                                        k=self.k)
             
             eval_actions = _t2n(eval_actions)
             eval_somu_hidden_states_actor = _t2n(eval_somu_hidden_states_actor)

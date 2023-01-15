@@ -109,7 +109,7 @@ class MLPBlock(nn.Module):
         # basic fc_block. inpuit --> linear --> batch norm --> activation function --> dropout 
         self.block = nn.Sequential(
             # linear hidden layer
-            nn.Linear(self.input_shape, self.output_shape, bias = False),
+            nn.Linear(self.input_shape, self.output_shape, bias=False),
             # layer norm
             nn.LayerNorm(self.output_shape),
             # activation func
@@ -169,8 +169,8 @@ class DGCNBlock(nn.Module):
                                         (DGCNConv(in_channels=input_channels, out_channels=output_channels, att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, concat=concat,  
                                                   negative_slope=negative_slope, dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, fill_value=fill_value, bias=bias), 
                                          'x, edge_index -> x'), 
-                                        # pair norm
-                                        (gnn.PairNorm(scale=1.0, scale_individually=True, eps=1e-05), 'x -> x')
+                                        # graph norm
+                                        (gnn.GraphNorm(self.output_channels * self.att_heads if concat == True else self.output_channels), 'x -> x')
                                     ]
         )  
 

@@ -42,6 +42,10 @@ class DGCNActor(nn.Module):
         self.scmu_multi_att_num_heads = args.scmu_multi_att_num_heads
         self.fc_output_dims = args.fc_output_dims
         self.n_fc_layers = args.n_fc_layers
+        self.knn = args.knn
+        self.k = args.k
+        self.rni = args.rni
+        self.rni_ratio = args.rni_ratio
 
         obs_shape = get_shape_from_obs_space(obs_space)
         if isinstance(obs_shape, list):
@@ -49,11 +53,15 @@ class DGCNActor(nn.Module):
         else:
             self.obs_dims = obs_shape
 
+        self.rni_dims = round(self.obs_dims * self.rni_ratio)
+
         # model architecture for mappo dgcn actor
 
         # dgcn layers
-        self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims, block=DGCNBlock, 
-                                      output_channels=[self.obs_dims for i in range(self.n_dgcn_layers)], 
+        self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                      block=DGCNBlock, 
+                                      output_channels=[self.obs_dims + self.rni_dims if self.rni\
+                                                       else self.obs_dims for i in range(self.n_dgcn_layers)], 
                                       concat=False)
 
         # list of lstms for self observation memory unit (somu) for each agent
@@ -63,8 +71,9 @@ class DGCNActor(nn.Module):
                                for _ in range(self.num_agents)]
 
         # list of lstms for self communication memory unit (scmu) for each agent
-        # somu_lstm_input_size is the all layers of dgcn
-        self.scmu_lstm_list = [nn.LSTM(input_size=(self.n_dgcn_layers + 1) * self.obs_dims, 
+        # somu_lstm_input_size are all layers of dgcn
+        self.scmu_lstm_list = [nn.LSTM(input_size=(self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni\
+                                                  else (self.n_dgcn_layers + 1) * self.obs_dims, 
                                        hidden_size=self.scmu_lstm_hidden_size, 
                                        num_layers=self.scmu_num_layers, batch_first=True).to(device) 
                                for _ in range(self.num_agents)]
@@ -83,7 +92,10 @@ class DGCNActor(nn.Module):
         # input channels are all layers of dgcn (including initial observations) 
         # + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=(self.n_dgcn_layers + 1) * self.obs_dims + \
+        self.fc_layers = NNLayers(input_channels=(self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) + \
+                                                 self.somu_num_layers * self.somu_lstm_hidden_size + \
+                                                 self.scmu_num_layers * self.scmu_lstm_hidden_size if self.rni
+                                                 else (self.n_dgcn_layers + 1) * self.obs_dims + \
                                                  self.somu_num_layers * self.somu_lstm_hidden_size + \
                                                  self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                   block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
@@ -96,7 +108,7 @@ class DGCNActor(nn.Module):
         self.to(device)
         
     def forward(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, 
-                masks, available_actions=None, deterministic=False, knn=False, k=1):
+                masks, available_actions=None, deterministic=False):
         """
         Compute actions from the given inputs.
         :param obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -108,8 +120,6 @@ class DGCNActor(nn.Module):
         :param available_actions: (np.ndarray / torch.Tensor) denotes which actions are available to agent
                                                               (if None, all actions available)
         :param deterministic: (bool) whether to sample from action distribution or return the mode.
-        :param knn: (bool) whether to use k nearest neighbour to set up edge index.
-        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return actions: (torch.Tensor) actions to take.
         :return action_log_probs: (torch.Tensor) log probabilities of taken actions.
@@ -118,36 +128,48 @@ class DGCNActor(nn.Module):
         :return scmu_hidden_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :return scmu_cell_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu network.
         """
-        if knn:
-            # shape: (batch_size, num_agents, obs_dims)  
+        if self.knn:
+            # [shape: (batch_size, num_agents, obs_dims)]
             obs = check(obs) 
             batch_size = obs.shape[0]
-            # shape: (batch_size * num_agents, obs_dims)
+            # [shape: (batch_size * num_agents, obs_dims)]
             obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
             batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
             obs = obs.to(**self.tpdv)  
-            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise
+                # [shape: (batch_size, num_agents, rni_dims)] 
+                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+                obs_rni = torch.cat((obs, rni), dim=-1)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], edge_index=edge_index) 
                                             for i in range(batch_size)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # shape: (batch_size, num_agents, obs_dims)  
+            # [shape: (batch_size, num_agents, obs_dims)]  
             obs = check(obs).to(**self.tpdv)  
             batch_size = obs.shape[0]
-            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # [shape: (batch_size, num_agents, rni_dims)] 
+                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+                obs_rni = torch.cat((obs, rni), dim=-1)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], edge_index=edge_index) 
                                             for i in range(batch_size)]).to(self.device)
-        # shape: (batch_size, num_agents, somu_num_layers, somu_lstm_hidden_size)
+        # [shape: (batch_size, num_agents, somu_num_layers, somu_lstm_hidden_size)]
         somu_hidden_states_actor = check(somu_hidden_states_actor).to(**self.tpdv)
         somu_cell_states_actor = check(somu_cell_states_actor).to(**self.tpdv)
-        # shape: (batch_size, num_agents, scmu_num_layers, scmu_lstm_hidden_size) 
+        # [shape: (batch_size, num_agents, scmu_num_layers, scmu_lstm_hidden_size)] 
         scmu_hidden_states_actor = check(scmu_hidden_states_actor).to(**self.tpdv)
         scmu_cell_states_actor = check(scmu_cell_states_actor).to(**self.tpdv) 
-        # shape: (batch_size, num_agents, 1)
+        # [shape: (batch_size, num_agents, 1)]
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1) 
         if available_actions is not None:
-            # shape: (batch_size, num_agents, action_space_dim)
+            # [shape: (batch_size, num_agents, action_space_dim)]
             available_actions = check(available_actions).to(**self.tpdv) 
         # store somu and scmu hidden states and cell states, actions and action_log_probs
         somu_lstm_hidden_state_list = []
@@ -157,8 +179,11 @@ class DGCNActor(nn.Module):
         actions_list = []
         action_log_probs_list = []
        
-        # obs_gnn.x [shape: (batch_size * num_agents, obs_dims)] --> dgcn_layers [shape: (batch_size, num_agents, (n_dgcn_layers + 1) * self.obs_dims)]
-        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index).reshape(batch_size, self.num_agents, (self.n_dgcn_layers + 1) * self.obs_dims)
+        # obs_gnn.x [shape: (batch_size * num_agents, obs_dims)] 
+        # --> dgcn_layers [shape: (batch_size, num_agents, (n_dgcn_layers + 1) * obs_dims / (n_dgcn_layers + 1) * (obs_dims + rni_dims))]
+        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
+                          .reshape(batch_size, self.num_agents, (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
+                                   (self.n_dgcn_layers + 1) * self.obs_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -207,9 +232,12 @@ class DGCNActor(nn.Module):
             scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state_list[i], scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (batch_size, (n_dgcn_layers + 1) * self.obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # [shape: (batch_size, (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) / 
+            # (batch_size, (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((dgcn_output[:, i, :], somu_output.reshape(batch_size, -1), scmu_output.reshape(batch_size, -1)), dim=-1)
-            # output [shape: (batch_size, (n_dgcn_layers + 1) * self.obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
+            # output [shape: (batch_size, (n_dgcn_layers + 1) * self.obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size) / 
+            # (batch_size, (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # -->   
             # fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
             # fc_layers --> act [shape: (batch_size, action_space_dim)]
@@ -225,7 +253,7 @@ class DGCNActor(nn.Module):
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, scmu_cell_states_actor, 
-                         action, masks, available_actions=None, active_masks=None, knn=False, k=1):
+                         action, masks, available_actions=None, active_masks=None):
         """
         Compute log probability and entropy of given actions.
         :param obs: (torch.Tensor) observation inputs into network.
@@ -238,35 +266,49 @@ class DGCNActor(nn.Module):
         :param available_actions: (torch.Tensor) denotes which actions are available to agent
                                                               (if None, all actions available)
         :param active_masks: (torch.Tensor) denotes whether an agent is active or dead.
-        :param knn: (bool) whether to use k nearest neighbour to set up edge index.
-        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
-        if knn:
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+        if self.knn:
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims]   
             obs = check(obs)
             mini_batch_size = obs.shape[0]
             # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
             obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
             batch = torch.tensor([i // self.num_agents for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
             obs = obs.to(**self.tpdv)
             # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
             obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims) 
+                rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)
+                obs_rni = torch.cat((obs, rni), dim=-1)
+                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims + self.rni_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], edge_index=edge_index) 
                                             for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims(pre-rni))]   
             obs = check(obs).to(**self.tpdv)
             mini_batch_size = obs.shape[0]
             # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
             obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims) 
+                rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)
+                obs_rni = torch.cat((obs, rni), dim=-1)
+                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims + self.rni_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], edge_index=edge_index) 
                                             for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, action_space_dim)]  
         action = check(action).to(**self.tpdv) 
@@ -295,9 +337,12 @@ class DGCNActor(nn.Module):
         dist_entropy_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] -->
-        # dgcn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_dgcn_layers + 1) * obs_dims)]
-        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index).reshape(mini_batch_size, self.data_chunk_length, 
-                                                                                           self.num_agents, (self.n_dgcn_layers + 1) * self.obs_dims)
+        # dgcn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_dgcn_layers + 1) * obs_dims \ 
+        # (n_dgcn_layers + 1) * (obs_dims + rni_dims))]
+        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
+                          .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, 
+                                   (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
+                                   (self.n_dgcn_layers + 1) * self.obs_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):
@@ -376,12 +421,18 @@ class DGCNActor(nn.Module):
 
             # concatenate obs and outputs from dgcn, somu and scmu 
             # [shape: (mini_batch_size * data_chunk_length, 
-            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
-            output = torch.cat((dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * self.obs_dims), 
+            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) / 
+            # (mini_batch_size * data_chunk_length, 
+            # (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            output = torch.cat((dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims))\
+                                if self.rni else dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * self.obs_dims), 
                                 somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_num_layers * self.somu_lstm_hidden_size), 
                                 scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_num_layers * self.scmu_lstm_hidden_size)), dim=-1)
             # output [shape: (mini_batch_size * data_chunk_length, 
-            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)] --> 
+            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) /  
+            # (mini_batch_size * data_chunk_length, 
+            # (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)
             # fc_layers --> act [shape: (mini_batch_size * data_chunk_length, action_space_dim)], [shape: () == scalar]
@@ -428,6 +479,10 @@ class DGCNCritic(nn.Module):
         self.scmu_multi_att_num_heads = args.scmu_multi_att_num_heads
         self.fc_output_dims = args.fc_output_dims
         self.n_fc_layers = args.n_fc_layers
+        self.knn = args.knn
+        self.k = args.k
+        self.rni = args.rni
+        self.rni_ratio = args.rni_ratio
 
         cent_obs_space = get_shape_from_obs_space(cent_obs_space)
         if isinstance(cent_obs_space, list):
@@ -435,11 +490,15 @@ class DGCNCritic(nn.Module):
         else:
             self.obs_dims = cent_obs_space
 
-       # model architecture for mappo dgcn actor
+        self.rni_dims = round(self.obs_dims * self.rni_ratio)
+
+        # model architecture for mappo dgcn critic
 
         # dgcn layers
-        self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims, block=DGCNBlock, 
-                                      output_channels=[self.obs_dims for i in range(self.n_dgcn_layers)], 
+        self.dgcn_layers = DGCNLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                      block=DGCNBlock, 
+                                      output_channels=[self.obs_dims + self.rni_dims if self.rni\
+                                                       else self.obs_dims for i in range(self.n_dgcn_layers)], 
                                       concat=False)
 
         # list of lstms for self observation memory unit (somu) for each agent
@@ -449,8 +508,9 @@ class DGCNCritic(nn.Module):
                                for _ in range(self.num_agents)]
 
         # list of lstms for self communication memory unit (scmu) for each agent
-        # somu_lstm_input_size is all layers of dgcn
-        self.scmu_lstm_list = [nn.LSTM(input_size=(self.n_dgcn_layers + 1) * self.obs_dims, 
+        # somu_lstm_input_size are all layers of dgcn
+        self.scmu_lstm_list = [nn.LSTM(input_size=(self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni\
+                                                  else (self.n_dgcn_layers + 1) * self.obs_dims, 
                                        hidden_size=self.scmu_lstm_hidden_size, 
                                        num_layers=self.scmu_num_layers, batch_first=True).to(device) 
                                for _ in range(self.num_agents)]
@@ -465,10 +525,14 @@ class DGCNCritic(nn.Module):
                                                                               dropout=0, batch_first=True, device=device) 
                                                         for _ in range(self.num_agents)])
 
-        # shared hidden fc layers for each agent
-        # input channels are observations + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer and last layer of dgcn
+        # shared hidden fc layers for to generate actions for each agent
+        # input channels are all layers of dgcn (including initial observations) 
+        # + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=(self.n_dgcn_layers + 1) * self.obs_dims + \
+        self.fc_layers = NNLayers(input_channels=(self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) + \
+                                                 self.somu_num_layers * self.somu_lstm_hidden_size + \
+                                                 self.scmu_num_layers * self.scmu_lstm_hidden_size if self.rni
+                                                 else (self.n_dgcn_layers + 1) * self.obs_dims + \
                                                  self.somu_num_layers * self.somu_lstm_hidden_size + \
                                                  self.scmu_num_layers * self.scmu_lstm_hidden_size, 
                                   block=MLPBlock, output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
@@ -487,7 +551,7 @@ class DGCNCritic(nn.Module):
         self.to(device)
 
     def forward(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
-                scmu_cell_states_critic, masks, knn=False, k=1):
+                scmu_cell_states_critic, masks):
         """
         Compute value function
         :param cent_obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -496,8 +560,6 @@ class DGCNCritic(nn.Module):
         :param scmu_hidden_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param scmu_cell_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param masks: (np.ndarray / torch.Tensor) mask tensor denoting if hidden states should be reinitialized to zeros.
-        :param knn: (bool) whether to use k nearest neighbour to set up edge index.
-        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         :return somu_hidden_states_critic: (torch.Tensor) hidden states for somu network.
@@ -505,25 +567,37 @@ class DGCNCritic(nn.Module):
         :return scmu_hidden_states_critic: (torch.Tensor) hidden states for scmu network.
         :return scmu_cell_states_critic: (torch.Tensor) hidden states for scmu network.
         """
-        if knn:
-            # shape: (batch_size, num_agents, obs_dims)  
-            obs = check(cent_obs)
+        if self.knn:
+            # [shape: (batch_size, num_agents, obs_dims)]
+            obs = check(cent_obs) 
             batch_size = obs.shape[0]
-            # shape: (batch_size * num_agents, obs_dims)
+            # [shape: (batch_size * num_agents, obs_dims)]
             obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
             batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
             obs = obs.to(**self.tpdv)  
-            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise
+                # [shape: (batch_size, num_agents, rni_dims)] 
+                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+                obs_rni = torch.cat((obs, rni), dim=-1)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], edge_index=edge_index) 
                                             for i in range(batch_size)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # shape: (batch_size, num_agents, obs_dims)  
+            # [shape: (batch_size, num_agents, obs_dims)]  
             obs = check(cent_obs).to(**self.tpdv)  
             batch_size = obs.shape[0]
-            obs_gnn = Batch.from_data_list([Data(x=obs[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # [shape: (batch_size, num_agents, rni_dims)] 
+                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+                obs_rni = torch.cat((obs, rni), dim=-1)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], edge_index=edge_index) 
                                             for i in range(batch_size)]).to(self.device)
         # shape: (batch_size, num_agents, somu_num_layers, somu_lstm_hidden_size)
         somu_hidden_states_critic = check(somu_hidden_states_critic).to(**self.tpdv)
@@ -540,8 +614,11 @@ class DGCNCritic(nn.Module):
         scmu_lstm_cell_state_list = []
         values_list = []
        
-        # obs_gnn.x [shape: (batch_size * num_agents, obs_dims)] --> dgcn_layers [shape: (batch_size, num_agents, (n_dgcn_layers + 1) * obs_dims)]
-        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index).reshape(batch_size, self.num_agents, (self.n_dgcn_layers + 1) * self.obs_dims)
+        # obs_gnn.x [shape: (batch_size * num_agents, obs_dims)] 
+        # --> dgcn_layers [shape: (batch_size, num_agents, (n_dgcn_layers + 1) * obs_dims / (n_dgcn_layers + 1) * (obs_dims + rni_dims))]
+        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
+                          .reshape(batch_size, self.num_agents, (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
+                                   (self.n_dgcn_layers + 1) * self.obs_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -590,9 +667,12 @@ class DGCNCritic(nn.Module):
             scmu_output = self.somu_multi_att_layer_list[i](scmu_lstm_hidden_state_list[i], scmu_output, scmu_output)[0]
 
             # concatenate obs and outputs from dgcn, somu and scmu 
-            # [shape: (batch_size, (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # [shape: (batch_size, (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) / 
+            # (batch_size, (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
             output = torch.cat((dgcn_output[:, i, :], somu_output.reshape(batch_size, -1), scmu_output.reshape(batch_size, -1)), dim=-1)
-            # output [shape: (batch_size, obs_dims + obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size)] --> 
+            # output [shape: (batch_size, (n_dgcn_layers + 1) * self.obs_dims + somu_lstm_hidden_size + scmu_lstm_hidden_size) / 
+            # (batch_size, (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # -->   
             # fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
             # output --> v_out [shape: (batch_size, 1)]
@@ -605,7 +685,7 @@ class DGCNCritic(nn.Module):
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
-                         scmu_cell_states_critic, masks, knn=False, k=1):
+                         scmu_cell_states_critic, masks):
         """
         Compute value function
         :param cent_obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -614,34 +694,48 @@ class DGCNCritic(nn.Module):
         :param scmu_hidden_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param scmu_cell_states_critic: (np.ndarray / torch.Tensor) hidden states for scmu network.
         :param masks: (np.ndarray / torch.Tensor) mask tensor denoting if hidden states should be reinitialized to zeros.
-        :param knn: (bool) whether to use k nearest neighbour to set up edge index.
-        :param k: (int) number of neighbours for k nearest neighbour.
 
         :return values: (torch.Tensor) value function predictions.
         """
-        if knn:
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+        if self.knn:
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims]   
             obs = check(cent_obs)
             mini_batch_size = obs.shape[0]
             # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
             obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
             batch = torch.tensor([i // self.num_agents for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=k, batch=batch, loop=True)
+            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
             obs = obs.to(**self.tpdv)
             # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
             obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims) 
+                rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)
+                obs_rni = torch.cat((obs, rni), dim=-1)
+                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims + self.rni_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], edge_index=edge_index) 
                                             for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         else:
             # obtain edge index
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims(pre-rni))]   
             obs = check(cent_obs).to(**self.tpdv)
             mini_batch_size = obs.shape[0]
             # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
             obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_batch[i, :, :], edge_index=edge_index) 
+            if self.rni:
+                # zero mean std 1 gaussian noise 
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims) 
+                rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)
+                obs_rni = torch.cat((obs, rni), dim=-1)
+                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims + self.rni_dims)
+            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], edge_index=edge_index) 
                                             for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
         # [shape: (mini_batch_size, num_agents, somu_num_layers, somu_lstm_hidden_size)]
         somu_hidden_states_critic = check(somu_hidden_states_critic).to(**self.tpdv) 
@@ -655,9 +749,12 @@ class DGCNCritic(nn.Module):
         values_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] -->
-        # dgcn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_dgcn_layers + 1) * obs_dims)]
-        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index).reshape(mini_batch_size, self.data_chunk_length, 
-                                                                                           self.num_agents, (self.n_dgcn_layers + 1) * self.obs_dims)
+        # dgcn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_dgcn_layers + 1) * obs_dims \ 
+        # (n_dgcn_layers + 1) * (obs_dims + rni_dims))]
+        dgcn_output = self.dgcn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
+                          .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, 
+                                   (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
+                                   (self.n_dgcn_layers + 1) * self.obs_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):
@@ -703,9 +800,14 @@ class DGCNCritic(nn.Module):
                 scmu_output, scmu_hidden_cell_states_tup = self.scmu_lstm_list[i](dgcn_output[:, j, i, :].unsqueeze(dim=1),
                                                                                   (scmu_seq_lstm_hidden_state_list[-1] 
                                                                                    * masks[:, j, i, :].repeat(1, self.scmu_num_layers)\
-                                                                                                      .transpose(0, 1).unsqueeze(-1).contiguous(),
+                                                                                                      .transpose(0, 1)\
+                                                                                                      .unsqueeze(-1)\
+                                                                                                      .contiguous(),
                                                                                    scmu_seq_lstm_cell_state_list[-1] 
-                                                                                   * masks[:, j, i, :].repeat(1, self.scmu_num_layers).transpose(0, 1).unsqueeze(-1).contiguous()))
+                                                                                   * masks[:, j, i, :].repeat(1, self.scmu_num_layers)\
+                                                                                                      .transpose(0, 1)\
+                                                                                                      .unsqueeze(-1)\
+                                                                                                      .contiguous()))
                 somu_seq_output_list.append(somu_output)
                 scmu_seq_output_list.append(scmu_output)
                 somu_seq_lstm_hidden_state_list.append(somu_hidden_cell_states_tup[0])
@@ -731,13 +833,19 @@ class DGCNCritic(nn.Module):
 
             # concatenate obs and outputs from dgcn, somu and scmu 
             # [shape: (mini_batch_size * data_chunk_length, 
-            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
-            output = torch.cat((dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * self.obs_dims), 
+            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) / 
+            # (mini_batch_size * data_chunk_length, 
+            # (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            output = torch.cat((dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * (self.obs_dims + self.rni_dims))\
+                                if self.rni else dgcn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, (self.n_dgcn_layers + 1) * self.obs_dims), 
                                 somu_output.reshape(mini_batch_size * self.data_chunk_length, self.somu_num_layers * self.somu_lstm_hidden_size), 
                                 scmu_output.reshape(mini_batch_size * self.data_chunk_length, self.scmu_num_layers * self.scmu_lstm_hidden_size)), dim=-1)
             # output [shape: (mini_batch_size * data_chunk_length, 
-            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)] --> 
-            # fc_layers_list [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
+            # (n_dgcn_layers + 1) * obs_dims + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size) /  
+            # (mini_batch_size * data_chunk_length, 
+            # (n_dgcn_layers + 1) * (obs_dims + rni_dims) + somu_num_layers * somu_lstm_hidden_size + scmu_num_layers * scmu_lstm_hidden_size)]
+            # --> 
+            # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)
             # output --> v_out [shape: (mini_batch_size * data_chunk_length, 1)]
             values = self.v_out(output)

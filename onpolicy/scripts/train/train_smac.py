@@ -86,8 +86,11 @@ def main(args):
     elif all_args.algorithm_name == "ippo":
         print("u are choosing to use ippo, we set use_centralized_V to be False")
         all_args.use_centralized_V = False
-    elif all_args.algorithm_name == "mappo_gnn":
-        print("u are choosing to use mappo_gnn, we set use_centralized_V to be True")
+    elif all_args.algorithm_name == "gcm_dna_gatv2_mappo":
+        print("u are choosing to use gcm_dna_gatv2_mappo, we set use_centralized_V to be True")
+        all_args.use_centralized_V = True
+    elif all_args.algorithm_name == "gcm_gin_mappo":
+        print("u are choosing to use gcm_gin_mappo, we set use_centralized_V to be True")
         all_args.use_centralized_V = True
     else:
         raise NotImplementedError
@@ -175,7 +178,7 @@ def main(args):
     }
 
     # run experiments
-    if all_args.algorithm_name == "mappo_gnn":
+    if all_args.algorithm_name == "gcm_dna_gatv2_mappo" or all_args.algorithm_name == "gcm_gine_mappo":
         from onpolicy.runner.shared.gnn_smac_runner import GNNSMACRunner as Runner
     elif all_args.share_policy:
         from onpolicy.runner.shared.smac_runner import SMACRunner as Runner

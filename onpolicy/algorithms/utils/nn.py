@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch_geometric.nn as gnn
 
 from functools import partial
-from onpolicy.algorithms.utils.dgcn import DGCNConv
+from onpolicy.algorithms.utils.dna_gatv2_conv import DNAGATv2Conv
 
 def activation_function(activation):
     """
@@ -101,10 +101,10 @@ class MLPBlock(nn.Module):
         # input and output units for hidden layer 
         self.input_shape = input_shape
         self.output_shape = output_shape
-        # activation function for after batch norm
+        # activation function
         self.activation_func = activation_func 
         # dropout probablity
-        self.dropout_p = kwargs['dropout_p']
+        self.dropout_p = kwargs.get('dropout', 0)
 
         # basic fc_block. inpuit --> linear --> batch norm --> activation function --> dropout 
         self.block = nn.Sequential(
@@ -113,7 +113,9 @@ class MLPBlock(nn.Module):
             # layer norm
             nn.LayerNorm(self.output_shape),
             # activation func
-            activation_function(self.activation_func)
+            activation_function(self.activation_func),
+            # dropout
+            nn.Dropout(self.dropout_p)
         )
         
         # weight initialisation
@@ -121,25 +123,25 @@ class MLPBlock(nn.Module):
 
     def forward(self, x):
         """ 
-        function for forward pass of fc_block 
+        function for forward pass of MLPBlock 
         """
         x = self.block(x)
         
         return x
 
-class DGCNBlock(nn.Module):
+class DNAGATv2Block(nn.Module):
     """ 
-    class to build DGCNBlock 
+    class to build DNAGATv2Block 
     """
 
     def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
         """ 
-        class constructor for attributes of the DGCNBlock 
+        class constructor for attributes of the DNAGATv2Block 
         """
         # inherit class constructor attributes from nn.Module
         super().__init__()
 
-        # input and output channels for dgcn 
+        # input and output channels for DNAGATv2Conv 
         self.input_channels = input_channels
         self.output_channels = output_channels
         # number of heads for gatv2 and multi head attention
@@ -162,12 +164,12 @@ class DGCNBlock(nn.Module):
         # boolean for bias
         self.bias = bias
 
-        # basic dgcn_block. input --> dgcn --> graph norm --> activation func
+        # basic dgcn_block. input --> DNAGATv2Conv --> graph norm
         self.block = gnn.Sequential('x, edge_index', 
                                     [
-                                        # dgcn block 
-                                        (DGCNConv(in_channels=input_channels, out_channels=output_channels, att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, concat=concat,  
-                                                  negative_slope=negative_slope, dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, fill_value=fill_value, bias=bias), 
+                                        # DNAGATv2Conv block 
+                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, concat=concat,  
+                                                      negative_slope=negative_slope, dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, fill_value=fill_value, bias=bias), 
                                          'x, edge_index -> x'), 
                                         # graph norm
                                         (gnn.GraphNorm(self.output_channels * self.att_heads if concat == True else self.output_channels), 'x -> x')
@@ -176,7 +178,71 @@ class DGCNBlock(nn.Module):
 
     def forward(self, x, edge_index):
         """ 
-        function for forward pass of gatv2_block 
+        function for forward pass of DNAGATv2Block 
+        """
+        x = self.block(x, edge_index)
+        
+        return x
+
+class GINBlock(nn.Module):
+    """ 
+    class to build GINBlock 
+    """
+
+    def __init__(self, input_channels, output_channels, n_gin_fc_layers, activation_func="relu", eps=0.0, train_eps=False, edge_dim=None):
+        """ 
+        class constructor for attributes of the GINBlock 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+
+        # input and output channels for GINConv
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # number of layers of MLP of GINConv
+        self.n_gin_fc_layers = n_gin_fc_layers
+        # activation function
+        self.activation_func = activation_func 
+        # epsilon
+        self.eps = eps
+        # boolean to track if eps is trainable parameter
+        self.train_eps = train_eps
+        # dimension of edge attributes if any
+        self.edge_dim = edge_dim
+
+        # list to store modules for Sequential
+        modules = []
+        # generate modules
+        for i in range(n_gine_fc_layers):
+            # first layer
+            if i == 0:
+                # linear hidden layer
+                modules.append(nn.Linear(self.input_channels, self.output_channels, bias=False))   
+            # subsequent layers
+            else:
+                # linear hidden layer
+                modules.append(nn.Linear(self.output_channels, self.output_channels, bias=False))
+            # layer norm
+            modules.append(nn.LayerNorm(self.output_channels))
+            # activation function
+            modules.append(activation_function(self.activation_func))
+        # generate MLP
+        self.nn = nn.Sequential(*modules)
+
+        # basic dgcn_block. input --> gin --> graph norm
+        self.block = gnn.Sequential('x, edge_index', 
+                                    [
+                                        # gine block 
+                                        (gnn.GINConv(nn=self.nn, eps=self.eps, train_eps=self.train_eps, edge_dim=self.edge_dim), 
+                                         'x, edge_index -> x'), 
+                                        # graph norm
+                                        (gnn.GraphNorm(self.output_channels), 'x -> x')
+                                    ]
+        )  
+
+    def forward(self, x, edge_index, edge_attr=None):
+        """ 
+        function for forward pass of GINEBlock 
         """
         x = self.block(x, edge_index)
         
@@ -217,17 +283,16 @@ class NNLayers(nn.Module):
             
         return x 
 
-class DGCNLayers(NNLayers):
+class DNAGATv2Layers(NNLayers):
     """ 
-    class to build layers of dgcn blocks specfically. dgcn is unique from other blocks as it requries past layers as its inputs
+    class to build layers of DNAGATv2Conv blocks specfically. DNAGATv2Conv is unique from other blocks as it requries past layers as its inputs
     """
 
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):
         """ 
-        class constructor for attributes of DGCNLayers 
+        class constructor for attributes of DNAGATv2Layers 
         """
         # inherit class constructor attributes from nn_layers
-
         super().__init__(input_channels, block, output_channels, *args, **kwargs)
 
     def forward(self, x, *args, **kwargs):
@@ -245,3 +310,31 @@ class DGCNLayers(NNLayers):
             x = T.cat((x, T.unsqueeze(y, 1)), 1)
 
         return x 
+
+class GINLayers(NNLayers):
+    """ 
+    class to build layers of GINConv blocks to include all past layers
+    """
+
+    def __init__(self, input_channels, block, output_channels, *args, **kwargs):
+        """ 
+        class constructor for attributes of GINLayers 
+        """
+        # inherit class constructor attributes from nn_layers
+        super().__init__(input_channels, block, output_channels, *args, **kwargs)
+
+    def forward(self, x, *args, **kwargs):
+        """ 
+        function for forward pass of layers
+        """
+        # add layer dimension to final output
+        out = T.unsqueeze(x, 1)
+    
+        # iterate over each block
+        for block in self.blocks:
+            # output y with shape [num_nodes, out_channels]
+            x = block(x, *args, **kwargs)
+            # add layer dimensions to output and concatenate y to existing x
+            out = T.cat((out, T.unsqueeze(x, 1)), 1)
+
+        return out 

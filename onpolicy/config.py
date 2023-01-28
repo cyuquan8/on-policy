@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo", "rmappg", "mappg", "trpo"]`
+            specifiy the algorithm, including `["rmappo", "mappo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -77,25 +77,25 @@ def get_config():
         --data_chunk_length <int>
             Time length of chunks used to train a recurrent_policy, default 10.
 
-    DGCN network parameters:
-        --n_dgcn_layers <int>
-            Number of DGCN layers for DGCN actor and critic network, (default: 3)
+    GCM network parameters:
+        --n_gnn_layers <int>
+            Number of GNN layers for GCM actor and critic network, (default: 3)
         --somu_num_layers <int>
-            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network, (default: 3)
+            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network, (default: 3)
         --somu_lstm_hidden_size <int>
-            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network, (default: 128)
+            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network, (default: 128)
         --somu_multi_att_num_heads <int>
-            Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network, (default: 2)
+            Number of Heads for Multi-Attention for SOMU outputs in GCM actor network, (default: 2)
         --scmu_num_layers <int>
-            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in DGCN actor network, (default: 3)
+            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network, (default: 3)
         --scmu_lstm_hidden_size <int>
-            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network, (default: 128)
+            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network, (default: 128)
         --scmu_multi_att_num_heads <int>
-            Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network, (default: 2)
+            Number of Heads for Multi-Attention for SCMU outputs in GCM actor network, (default: 2)
         --fc_output_dims <int>
-            Hidden Size for MLP layers in DGCN actor and critic network, (default: 128)
+            Hidden Size for MLP layers in GCM actor and critic network, (default: 128)
         --n_fc_layers <int>
-            Number of MLP layers in DGCN actor and critic network, (default: 3)
+            Number of MLP layers in GCM actor and critic network, (default: 3)
         --knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
         --k <int>
@@ -104,6 +104,8 @@ def get_config():
             Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN (default : False)
         --rni_ratio <float>
             Ratio of randomly generated vector in RNI to original observation feature vector (default : 0.25)
+        --n_gin_fc_layers <int>
+            Number of MLP layers in GCM GINConv (default: 2)
     
     Optimizer parameters:
         --lr <float>
@@ -188,8 +190,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo","mappo_gnn"])
-
+                        default='mappo', choices=["rmappo", "mappo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -242,20 +243,21 @@ def get_config():
     parser.add_argument("--gain", type=float, default=0.01,
                         help="The gain # of last action layer")
 
-    # dgcn network parameters
-    parser.add_argument("--n_dgcn_layers", type=int, default=3, help="Number of DGCN layers for DGCN actor and critic network")
-    parser.add_argument("--somu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in DGCN actor network")
-    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in DGCN actor network")
-    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in DGCN actor network")
-    parser.add_argument("--scmu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in DGCN actor network")
-    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in DGCN actor network")
-    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in DGCN actor network")
-    parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in DGCN actor and critic network")
-    parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in DGCN actor and critic network")
+    # gcm network parameters
+    parser.add_argument("--n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCM actor and critic network")
+    parser.add_argument("--somu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network")
+    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network")
+    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCM actor network")
+    parser.add_argument("--scmu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network")
+    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network")
+    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCM actor network")
+    parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCM actor and critic network")
+    parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in GCM actor and critic network")
     parser.add_argument("--knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
     parser.add_argument("--k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
     parser.add_argument("--rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
     parser.add_argument("--rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
+    parser.add_argument("--n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCM GINConv")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

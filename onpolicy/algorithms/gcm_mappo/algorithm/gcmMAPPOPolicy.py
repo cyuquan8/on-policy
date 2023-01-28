@@ -1,11 +1,14 @@
 import torch
-from onpolicy.algorithms.dgcn_mappo.algorithm.dgcn_actor_critic import DGCNActor, DGCNCritic
+from onpolicy.algorithms.gcm_mappo.algorithm.gcm_actor_critic import GCMNetDNAGATv2Actor,\
+                                                                     GCMNetDNAGATv2Critic,\
+                                                                     GCMNetGINActor,\
+                                                                     GCMNetGINCritic
 from onpolicy.utils.util import update_linear_schedule
 
 
-class DGCN_MAPPOPolicy:
+class GCM_MAPPOPolicy:
     """
-    DGCN_MAPPO Policy class. Wraps actor and critic networks to compute actions and value function predictions.
+    GCM_MAPPO Policy class. Wraps actor and critic networks to compute actions and value function predictions.
 
     :param args: (argparse.Namespace) arguments containing relevant model and policy information.
     :param obs_space: (gym.Space) observation space.
@@ -25,8 +28,12 @@ class DGCN_MAPPOPolicy:
         self.share_obs_space = cent_obs_space
         self.act_space = act_space
 
-        self.actor = DGCNActor(args, self.obs_space, self.act_space, self.device)
-        self.critic = DGCNCritic(args, self.share_obs_space, self.device)
+        if args.algorithm_name == "gcm_dna_gatv2_mappo":
+            self.actor = GCMNetDNAGATv2Actor(args, self.obs_space, self.act_space, self.device)
+            self.critic = GCMNetDNAGATv2Critic(args, self.share_obs_space, self.device)
+        elif args.algorithm_name == "gcm_gin_mappo":
+            self.actor = GCMNetGINActor(args, self.obs_space, self.act_space, self.device)
+            self.critic = GCMNetGINCritic(args, self.share_obs_space, self.device)
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=self.lr, eps=self.opti_eps,

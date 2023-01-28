@@ -41,7 +41,7 @@ class GNNRunner(object):
         self.use_render = self.all_args.use_render
         self.recurrent_N = self.all_args.recurrent_N
 
-        self.n_dgcn_layers = self.all_args.n_dgcn_layers
+        self.n_gnn_layers = self.all_args.n_gnn_layers
         self.somu_num_layers = self.all_args.somu_num_layers
         self.somu_lstm_hidden_size = self.all_args.somu_lstm_hidden_size
         self.somu_multi_att_num_heads = self.all_args.somu_multi_att_num_heads
@@ -73,8 +73,8 @@ class GNNRunner(object):
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir)
 
-        from onpolicy.algorithms.dgcn_mappo.dgcn_mappo import DGCN_MAPPO as TrainAlgo
-        from onpolicy.algorithms.dgcn_mappo.algorithm.dgcnMAPPOPolicy import DGCN_MAPPOPolicy as Policy
+        from onpolicy.algorithms.gcm_mappo.gcm_mappo import GCM_MAPPO as TrainAlgo
+        from onpolicy.algorithms.gcm_mappo.algorithm.gcmMAPPOPolicy import GCM_MAPPOPolicy as Policy
 
         share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
 

@@ -12,9 +12,9 @@ from torch_geometric.nn.inits import glorot, zeros, kaiming_uniform, uniform
 from torch_geometric.typing import Adj, OptTensor
 from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
 
-class DGCNLinear(torch.nn.Module):
+class AttLinear(torch.nn.Module):
     """ 
-    class for linear model for purposes of DNA / DGCN 
+    class for linear model for purposes of Multi Head Attention
     """
 
     def __init__(self, in_channels, out_channels, groups=1, bias=True):
@@ -183,9 +183,9 @@ class MultiHead(Attention):
         assert max(groups, self.heads) % min(groups, self.heads) == 0
 
         # create linear models
-        self.lin_q = DGCNLinear(in_channels, out_channels, groups, bias)
-        self.lin_k = DGCNLinear(in_channels, out_channels, groups, bias)
-        self.lin_v = DGCNLinear(in_channels, out_channels, groups, bias)
+        self.lin_q = AttLinear(in_channels, out_channels, groups, bias)
+        self.lin_k = AttLinear(in_channels, out_channels, groups, bias)
+        self.lin_v = AttLinear(in_channels, out_channels, groups, bias)
 
         # initialise parameters
         self.reset_parameters()
@@ -252,9 +252,9 @@ class MultiHead(Attention):
         """
         return (f'{self.__class__.__name__}({self.in_channels}, 'f'{self.out_channels}, heads = {self.heads}, 'f'groups = {self.groups}, dropout = {self.droput}, 'f'bias = {self.bias})')
 
-class DGCNConv(MessagePassing):
+class DNAGATv2Conv(MessagePassing):
     """ 
-    class for dynamic graph communication convolution operator 
+    class based on the combination of DNA and GATV2 graph convolution operator 
     """
     # typing 
     _alpha: OptTensor

@@ -213,7 +213,7 @@ class GINBlock(nn.Module):
         # list to store modules for Sequential
         modules = []
         # generate modules
-        for i in range(n_gine_fc_layers):
+        for i in range(n_gin_fc_layers):
             # first layer
             if i == 0:
                 # linear hidden layer

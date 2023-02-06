@@ -42,12 +42,12 @@ class GNNRunner(object):
         self.recurrent_N = self.all_args.recurrent_N
 
         self.n_gnn_layers = self.all_args.n_gnn_layers
-        self.somu_num_layers = self.all_args.somu_num_layers
+        self.somu_n_layers = self.all_args.somu_n_layers
         self.somu_lstm_hidden_size = self.all_args.somu_lstm_hidden_size
         self.somu_multi_att_num_heads = self.all_args.somu_multi_att_num_heads
-        self.scmu_num_layers = self.all_args.scmu_num_layers
+        self.scmu_n_layers = self.all_args.scmu_n_layers
         self.scmu_lstm_hidden_size = self.all_args.scmu_lstm_hidden_size
-        self.scmu_multi_att_num_heads = self.all_args.scmu_multi_att_num_heads
+        self.scmu_multi_att_n_heads = self.all_args.scmu_multi_att_n_heads
         self.fc_output_dims = self.all_args.fc_output_dims
         self.n_fc_layers = self.all_args.n_fc_layers
 

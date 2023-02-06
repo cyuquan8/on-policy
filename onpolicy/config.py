@@ -80,17 +80,17 @@ def get_config():
     GCM network parameters:
         --n_gnn_layers <int>
             Number of GNN layers for GCM actor and critic network, (default: 3)
-        --somu_num_layers <int>
+        --somu_n_layers <int>
             Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network, (default: 3)
         --somu_lstm_hidden_size <int>
             Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network, (default: 128)
-        --somu_multi_att_num_heads <int>
+        --somu_multi_att_n_heads <int>
             Number of Heads for Multi-Attention for SOMU outputs in GCM actor network, (default: 2)
-        --scmu_num_layers <int>
+        --scmu_n_layers <int>
             Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network, (default: 3)
         --scmu_lstm_hidden_size <int>
             Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network, (default: 128)
-        --scmu_multi_att_num_heads <int>
+        --scmu_multi_att_n_heads <int>
             Number of Heads for Multi-Attention for SCMU outputs in GCM actor network, (default: 2)
         --fc_output_dims <int>
             Hidden Size for MLP layers in GCM actor and critic network, (default: 128)
@@ -245,12 +245,12 @@ def get_config():
 
     # gcm network parameters
     parser.add_argument("--n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCM actor and critic network")
-    parser.add_argument("--somu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network")
+    parser.add_argument("--somu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network")
     parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network")
-    parser.add_argument("--somu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCM actor network")
-    parser.add_argument("--scmu_num_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network")
+    parser.add_argument("--somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCM actor network")
+    parser.add_argument("--scmu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network")
     parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network")
-    parser.add_argument("--scmu_multi_att_num_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCM actor network")
+    parser.add_argument("--scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCM actor network")
     parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCM actor and critic network")
     parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in GCM actor and critic network")
     parser.add_argument("--knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")

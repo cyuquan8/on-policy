@@ -19,8 +19,8 @@ class SharedGNNReplayBuffer(object):
         self.recurrent_N = args.recurrent_N
         self.gamma = args.gamma
         self.gae_lambda = args.gae_lambda
-        self.somu_num_layers = args.somu_num_layers
-        self.scmu_num_layers = args.scmu_num_layers
+        self.somu_n_layers = args.somu_n_layers
+        self.scmu_n_layers = args.scmu_n_layers
         self.somu_lstm_hidden_size = args.somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.scmu_lstm_hidden_size
         self.num_agents = num_agents
@@ -43,29 +43,29 @@ class SharedGNNReplayBuffer(object):
         self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
 
         self.somu_hidden_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.somu_cell_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_hidden_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_cell_states_actor = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
 
         self.somu_hidden_states_critic = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.somu_cell_states_critic = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_hidden_states_critic = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
         self.scmu_cell_states_critic = np.zeros(
-            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size),
+            (self.episode_length + 1, self.n_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size),
             dtype=np.float32)
 
         self.value_preds = np.zeros(

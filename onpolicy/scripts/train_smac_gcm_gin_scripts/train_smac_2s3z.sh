@@ -1,6 +1,6 @@
 #!/bin/sh
 env="StarCraft2"
-map="2c_vs_64zg"
+map="2s3z"
 algo="gcm_gin_mappo"
 seed_max=1
 user="cyuquan8"

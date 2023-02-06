@@ -545,9 +545,9 @@ class GCMNetDNAGATv2Critic(nn.Module):
 
         # final layer for value function using popart / mlp
         if self._use_popart:
-            self.v_out = init_(PopArt(self.fc_output_dims, 1, device=device))
+            self.v_out = init_(PopArt(self.num_agents * self.fc_output_dims, 1, device=device))
         else:
-            self.v_out = init_(nn.Linear(self.fc_output_dims, 1))
+            self.v_out = init_(nn.Linear(self.num_agents * self.fc_output_dims, 1))
         
         self.to(device)
 
@@ -608,12 +608,12 @@ class GCMNetDNAGATv2Critic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv) 
         # shape: (batch_size, num_agents, 1)
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1) 
-        # store somu and scmu hidden states and cell states and values
+        # store somu and scmu hidden states and cell states and output before v_out
         somu_lstm_hidden_state_list = []
         somu_lstm_cell_state_list = []
         scmu_lstm_hidden_state_list = []
         scmu_lstm_cell_state_list = []
-        values_list = []
+        output_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
         # --> gnn_layers [shape: (batch_size, num_agents, (n_gnn_layers + 1) * obs_dims / (n_gnn_layers + 1) * (obs_dims + rni_dims))]
@@ -676,13 +676,17 @@ class GCMNetDNAGATv2Critic(nn.Module):
             # -->   
             # fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
-            # output --> v_out [shape: (batch_size, 1)]
-            values = self.v_out(output)
-            values_list.append(values)
-       
+            output_list.append(output)
+        
+        # [shape: (batch_size, num_agents * fc_output_dims)]
+        output = torch.stack(output_list, dim=1).reshape(batch_size, self.num_agents * self.fc_output_dims)
+        # output --> v_out [shape: (batch_size, num_agents, 1)]
+        # repeat the same value function for each agent
+        values = self.v_out(output).repeat(1, self.num_agents).reshape(batch_size, self.num_agents, 1)
+
         # [shape: (batch_size, num_agents, 1)]
         # [shape: (batch_size, num_agents, somu_n_layers / scmu_n_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-        return torch.stack(values_list, dim=1), torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
+        return values, torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
@@ -746,8 +750,8 @@ class GCMNetDNAGATv2Critic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
-        # store values
-        values_list = []
+        # store output before v_out
+        output_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
         # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_gnn_layers + 1) * obs_dims \ 
@@ -848,12 +852,16 @@ class GCMNetDNAGATv2Critic(nn.Module):
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)
-            # output --> v_out [shape: (mini_batch_size * data_chunk_length, 1)]
-            values = self.v_out(output)
-            values_list.append(values)
+            output_list.append(output)
+
+        # [shape: (mini_batch_size * data_chunk_length, num_agents * fc_output_dims)]
+        output = torch.stack(output_list, dim=1).reshape(mini_batch_size * self.data_chunk_length, self.num_agents * self.fc_output_dims)
+        # output --> v_out [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
+        # repeat the same value function for each agent
+        values = self.v_out(output).repeat(1, self.num_agents).reshape(mini_batch_size * self.data_chunk_length * self.num_agents, 1)
 
         # [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
-        return torch.stack(values_list, dim=1).reshape(-1, 1)
+        return values
 
 
 class GCMNetGINActor(nn.Module):
@@ -1400,9 +1408,9 @@ class GCMNetGINCritic(nn.Module):
 
         # final layer for value function using popart / mlp
         if self._use_popart:
-            self.v_out = init_(PopArt(self.fc_output_dims, 1, device=device))
+            self.v_out = init_(PopArt(self.num_agents * self.fc_output_dims, 1, device=device))
         else:
-            self.v_out = init_(nn.Linear(self.fc_output_dims, 1))
+            self.v_out = init_(nn.Linear(self.num_agents * self.fc_output_dims, 1))
         
         self.to(device)
 
@@ -1463,12 +1471,12 @@ class GCMNetGINCritic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv) 
         # shape: (batch_size, num_agents, 1)
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1) 
-        # store somu and scmu hidden states and cell states and values
+        # store somu and scmu hidden states and cell states and output before v_out
         somu_lstm_hidden_state_list = []
         somu_lstm_cell_state_list = []
         scmu_lstm_hidden_state_list = []
         scmu_lstm_cell_state_list = []
-        values_list = []
+        output_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
         # --> gnn_layers [shape: (batch_size, num_agents, (n_gnn_layers + 1) * obs_dims / (n_gnn_layers + 1) * (obs_dims + rni_dims))]
@@ -1534,13 +1542,17 @@ class GCMNetGINCritic(nn.Module):
             # -->   
             # fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
-            # output --> v_out [shape: (batch_size, 1)]
-            values = self.v_out(output)
-            values_list.append(values)
-       
+            output_list.append(output)
+        
+        # [shape: (batch_size, num_agents * fc_output_dims)]
+        output = torch.stack(output_list, dim=1).reshape(batch_size, self.num_agents * self.fc_output_dims)
+        # output --> v_out [shape: (batch_size, num_agents, 1)]
+        # repeat the same value function for each agent
+        values = self.v_out(output).repeat(1, self.num_agents).reshape(batch_size, self.num_agents, 1)
+
         # [shape: (batch_size, num_agents, 1)]
         # [shape: (batch_size, num_agents, somu_n_layers / scmu_n_layers, somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-        return torch.stack(values_list, dim=1), torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
+        return values, torch.stack(somu_lstm_hidden_state_list, dim=1), torch.stack(somu_lstm_cell_state_list, dim=1), \
                torch.stack(scmu_lstm_hidden_state_list, dim=1), torch.stack(scmu_lstm_cell_state_list, dim=1)
 
     def evaluate_actions(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
@@ -1571,7 +1583,7 @@ class GCMNetGINCritic(nn.Module):
                 # zero mean std 1 gaussian noise 
                 # [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)] 
                 rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims)).to(**self.tpdv)  
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
+                # [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)
                 obs_rni = torch.cat((obs, rni), dim=-1)
                 # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
                 obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims + self.rni_dims)
@@ -1604,8 +1616,8 @@ class GCMNetGINCritic(nn.Module):
         scmu_cell_states_critic = check(scmu_cell_states_critic).to(**self.tpdv)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
-        # store values
-        values_list = []
+        # store output before v_out
+        output_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] -->
         # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_gnn_layers + 1) * obs_dims \ 
@@ -1710,9 +1722,13 @@ class GCMNetGINCritic(nn.Module):
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)
-            # output --> v_out [shape: (mini_batch_size * data_chunk_length, 1)]
-            values = self.v_out(output)
-            values_list.append(values)
+            output_list.append(output)
+
+        # [shape: (mini_batch_size * data_chunk_length, num_agents * fc_output_dims)]
+        output = torch.stack(output_list, dim=1).reshape(mini_batch_size * self.data_chunk_length, self.num_agents * self.fc_output_dims)
+        # output --> v_out [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
+        # repeat the same value function for each agent
+        values = self.v_out(output).repeat(1, self.num_agents).reshape(mini_batch_size * self.data_chunk_length * self.num_agents, 1)
 
         # [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
-        return torch.stack(values_list, dim=1).reshape(-1, 1)
+        return values

@@ -15,8 +15,8 @@ def _t2n(x):
 
 class MPERunner(Runner):
     def __init__(self, config):
-        super(MPERunner, self).__init__(config)
-       
+        super().__init__(config)
+        
     def run(self):
         self.warmup()   
 

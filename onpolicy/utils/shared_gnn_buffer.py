@@ -20,7 +20,7 @@ class SharedGNNReplayBuffer(object):
         self.gamma = args.gamma
         self.gae_lambda = args.gae_lambda
         self.somu_n_layers = args.somu_n_layers
-        self.scmu_num_layers = args.scmu_num_layers
+        self.scmu_n_layers = args.scmu_n_layers
         self.somu_lstm_hidden_size = args.somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.scmu_lstm_hidden_size
         self.num_agents = num_agents

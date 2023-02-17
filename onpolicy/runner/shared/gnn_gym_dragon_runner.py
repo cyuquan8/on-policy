@@ -9,11 +9,12 @@ def _t2n(x):
     return x.detach().cpu().numpy()
 
 
-class GNNSMACRunner(GNNRunner):
+class GNNGymDragonRunner(GNNRunner):
     """Runner class to perform training, evaluation. and data collection for SMAC. See parent class for details."""
 
     def __init__(self, config):
-        super(GNNSMACRunner, self).__init__(config)
+        super(GNNGymDragonRunner, self).__init__(config)
+        self.index_to_agent_id = {0: 'alpha', 1: 'bravo', 2: 'charlie'}
 
     def run(self):
         self.warmup()
@@ -103,7 +104,14 @@ class GNNSMACRunner(GNNRunner):
 
     def warmup(self):
         # reset env
-        obs, share_obs, available_actions = self.envs.reset()
+        obs = self.envs.reset()
+        print(obs)
+        # obs_list = []
+        # available_actions_list = []
+        # # iterate over ray multiagentdict
+        # for agent_id, value in obs:
+        #     obs_list.append(value)
+        #     available_actions_list.append()
 
         # replay buffer
         if not self.use_centralized_V:
@@ -205,10 +213,10 @@ class GNNSMACRunner(GNNRunner):
 
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
@@ -237,10 +245,10 @@ class GNNSMACRunner(GNNRunner):
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
-            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 

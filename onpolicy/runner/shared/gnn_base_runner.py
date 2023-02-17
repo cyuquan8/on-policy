@@ -44,7 +44,7 @@ class GNNRunner(object):
         self.n_gnn_layers = self.all_args.n_gnn_layers
         self.somu_n_layers = self.all_args.somu_n_layers
         self.somu_lstm_hidden_size = self.all_args.somu_lstm_hidden_size
-        self.somu_multi_att_num_heads = self.all_args.somu_multi_att_num_heads
+        self.somu_multi_att_n_heads = self.all_args.somu_multi_att_n_heads
         self.scmu_n_layers = self.all_args.scmu_n_layers
         self.scmu_lstm_hidden_size = self.all_args.scmu_lstm_hidden_size
         self.scmu_multi_att_n_heads = self.all_args.scmu_multi_att_n_heads

@@ -8,7 +8,7 @@ lr=0.0001
 critic_lr=0.0001
 ppo_epoch=5
 clip_param=0.2
-n_gnn_layers=16
+n_gnn_layers=4
 rni_ratio=0.25
 exp="lr_${lr}_critic_lr_${critic_lr}_ppo_epoch_${ppo_epoch}_clip_param_${clip_param}_n_gnn_layers_${n_gnn_layers}_rni_ratio_${rni_ratio}"
 

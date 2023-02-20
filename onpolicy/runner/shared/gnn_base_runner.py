@@ -76,29 +76,54 @@ class GNNRunner(object):
         from onpolicy.algorithms.gcm_mappo.gcm_mappo import GCM_MAPPO as TrainAlgo
         from onpolicy.algorithms.gcm_mappo.algorithm.gcmMAPPOPolicy import GCM_MAPPOPolicy as Policy
 
-        share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
+        if self.all_args.env_name == 'gym_dragon':
+            share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space
 
-        self.all_args.num_agents = self.num_agents
+            self.all_args.num_agents = self.num_agents
 
-        # policy network
-        self.policy = Policy(self.all_args,
-                             self.envs.observation_space[0],
-                             share_observation_space,
-                             self.envs.action_space[0],
-                             device=self.device)
+            # policy network
+            self.policy = Policy(self.all_args,
+                                 self.envs.observation_space,
+                                 share_observation_space,
+                                 self.envs.action_space,
+                                 device=self.device)
 
-        # algorithm
-        self.trainer = TrainAlgo(self.all_args, self.policy, device=self.device)
+            # algorithm
+            self.trainer = TrainAlgo(self.all_args, self.policy, device=self.device)
 
-        if self.model_dir is not None:
-            self.restore()
+            if self.model_dir is not None:
+                self.restore()
 
-        # buffer
-        self.buffer = SharedReplayBuffer(self.all_args,
-                                         self.num_agents,
-                                         self.envs.observation_space[0],
-                                         share_observation_space,
-                                         self.envs.action_space[0])
+            # buffer
+            self.buffer = SharedReplayBuffer(self.all_args,
+                                             self.num_agents,
+                                             self.envs.observation_space,
+                                             share_observation_space,
+                                             self.envs.action_space)
+        else:
+            share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
+
+            self.all_args.num_agents = self.num_agents
+
+            # policy network
+            self.policy = Policy(self.all_args,
+                                 self.envs.observation_space[0],
+                                 share_observation_space,
+                                 self.envs.action_space[0],
+                                 device=self.device)
+
+            # algorithm
+            self.trainer = TrainAlgo(self.all_args, self.policy, device=self.device)
+
+            if self.model_dir is not None:
+                self.restore()
+
+            # buffer
+            self.buffer = SharedReplayBuffer(self.all_args,
+                                             self.num_agents,
+                                             self.envs.observation_space[0],
+                                             share_observation_space,
+                                             self.envs.action_space[0])
 
     def run(self):
         """Collect training data, perform training updates, and evaluate policy."""

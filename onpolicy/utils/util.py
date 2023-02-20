@@ -34,8 +34,8 @@ def get_shape_from_obs_space(obs_space):
         obs_shape = obs_space.shape
     elif obs_space.__class__.__name__ == 'list':
         obs_shape = obs_space
-    elif obs.space.__class__.__name__ == 'Dict':
-    	obs_shape = gym.spaces.utils.flatdim(obs_space)
+    elif obs_space.__class__.__name__ == 'Dict':
+    	obs_shape = gym.spaces.flatten_space(obs_space).shape
     else:
         raise NotImplementedError
     return obs_shape

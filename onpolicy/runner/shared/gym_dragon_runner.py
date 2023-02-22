@@ -62,19 +62,21 @@ class GymDragonRunner(Runner):
                                 int(total_num_steps / (end - start))))
 
                 if self.env_name == "gym_dragon":
-                    env_infos = {}
-                    # for agent_id in range(self.num_agents):
-                    #     idv_rews = []
-                    #     for info in infos:
-                    #         if 'individual_reward' in info[agent_id].keys():
-                    #             idv_rews.append(info[agent_id]['individual_reward'])
-                    #     agent_k = 'agent%i/individual_rewards' % agent_id
-                    #     env_infos[agent_k] = idv_rews
+                    # env_infos = {}
+                    sum_score = 0
+                    for i in range(self.n_rollout_threads):
+                        sum_score += infos[i][self.index_to_agent_id[0]]['score']
+                    avg_score = round(sum_score / self.n_rollout_threads)
+                    print("average score is {}.".format(avg_score))
+                    if self.use_wandb:
+                        wandb.log({"average score": avg_score}, step=total_num_steps)
+                    else:
+                        self.writter.add_scalars("average score", {"average score": avg_score}, total_num_steps)
 
                 train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
                 print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 self.log_train(train_infos, total_num_steps)
-                self.log_env(env_infos, total_num_steps)
+                # self.log_env(env_infos, total_num_steps)
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -174,6 +176,16 @@ class GymDragonRunner(Runner):
             eval_rnn_states[eval_dones == True] = np.zeros(((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
             eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones == True] = np.zeros(((eval_dones == True).sum(), 1), dtype=np.float32)
+
+        eval_sum_score = 0
+        for i in range(self.n_eval_rollout_threads):
+            eval_sum_score += eval_infos[i][self.index_to_agent_id[0]]['score']
+        eval_avg_score = round(eval_sum_score / self.n_eval_rollout_threads)
+        print("eval average score is {}.".format(eval_avg_score))
+        if self.use_wandb:
+            wandb.log({"eval average score": eval_avg_score}, step=total_num_steps)
+        else:
+            self.writter.add_scalars("eval average score", {"eval average score": avg_score}, total_num_steps)
 
         eval_episode_rewards = np.array(eval_episode_rewards)
         eval_env_infos = {}

@@ -49,7 +49,7 @@ class GCMNetDNAGATv2Actor(nn.Module):
         self.rni_ratio = args.rni_ratio
 
         obs_shape = get_shape_from_obs_space(obs_space)
-        if isinstance(obs_shape, list):
+        if isinstance(obs_shape, (list, tuple)):
             self.obs_dims = obs_shape[0]
         else:
             self.obs_dims = obs_shape
@@ -486,7 +486,7 @@ class GCMNetDNAGATv2Critic(nn.Module):
         self.rni_ratio = args.rni_ratio
 
         cent_obs_space = get_shape_from_obs_space(cent_obs_space)
-        if isinstance(cent_obs_space, list):
+        if isinstance(cent_obs_space, (list, tuple)):
             self.obs_dims = cent_obs_space[0]
         else:
             self.obs_dims = cent_obs_space
@@ -904,7 +904,7 @@ class GCMNetGINActor(nn.Module):
         self.n_gin_fc_layers = args.n_gin_fc_layers
 
         obs_shape = get_shape_from_obs_space(obs_space)
-        if isinstance(obs_shape, list):
+        if isinstance(obs_shape, (list, tuple)):
             self.obs_dims = obs_shape[0]
         else:
             self.obs_dims = obs_shape
@@ -1349,7 +1349,7 @@ class GCMNetGINCritic(nn.Module):
         self.n_gin_fc_layers = args.n_gin_fc_layers
 
         cent_obs_space = get_shape_from_obs_space(cent_obs_space)
-        if isinstance(cent_obs_space, list):
+        if isinstance(cent_obs_space, (list, tuple)):
             self.obs_dims = cent_obs_space[0]
         else:
             self.obs_dims = cent_obs_space

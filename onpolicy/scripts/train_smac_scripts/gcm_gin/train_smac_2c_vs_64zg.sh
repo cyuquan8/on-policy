@@ -19,8 +19,8 @@ do
     python ../../train/train_smac.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
     --map_name ${map} --seed ${seed} --user_name ${user} --n_training_threads 1 --n_rollout_threads 8 --num_mini_batch 1\
     --episode_length 400 --num_env_steps 10000000 --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-    --clip_param ${clip_param} --n_gnn_layers ${n_gnn_layers} --somu_n_layers 1 --somu_lstm_hidden_size 64\
-    --somu_multi_att_n_heads 2 --scmu_n_layers 1 --scmu_lstm_hidden_size 64 --scmu_multi_att_n_heads 2 --fc_output_dims 64 --n_fc_layers 2\
+    --clip_param ${clip_param} --n_gnn_layers ${n_gnn_layers} --somu_n_layers 2 --somu_lstm_hidden_size 64\
+    --somu_multi_att_n_heads 2 --scmu_n_layers 2 --scmu_lstm_hidden_size 64 --scmu_multi_att_n_heads 2 --fc_output_dims 64 --n_fc_layers 2\
     --n_gin_fc_layers 2 --k 1 --rni --rni_ratio ${rni_ratio} --use_value_active_masks --use_policy_active_masks --use_eval\
     --eval_episodes 32
 done

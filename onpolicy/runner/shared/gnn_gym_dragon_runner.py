@@ -22,9 +22,6 @@ class GNNGymDragonRunner(GNNRunner):
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
 
-        last_battles_game = np.zeros(self.n_rollout_threads, dtype=np.float32)
-        last_battles_won = np.zeros(self.n_rollout_threads, dtype=np.float32)
-
         for episode in range(episodes):
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
@@ -33,11 +30,11 @@ class GNNGymDragonRunner(GNNRunner):
                 # Sample actions
                 values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                 scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = self.collect(step)
+                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env = self.collect(step)
 
                 # Obser reward and next obs
-                obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
-                data = obs, share_obs, rewards, dones, infos, available_actions, \
+                obs, rewards, dones, infos, available_actions = self.envs.step(actions_env)
+                data = obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                        scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
                        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
@@ -58,8 +55,8 @@ class GNNGymDragonRunner(GNNRunner):
             # log information
             if episode % self.log_interval == 0:
                 end = time.time()
-                print("\n Map {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
-                      .format(self.all_args.map_name,
+                print("\n Region {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
+                      .format(self.all_args.region,
                               self.algorithm_name,
                               self.experiment_name,
                               episode,
@@ -68,34 +65,20 @@ class GNNGymDragonRunner(GNNRunner):
                               self.num_env_steps,
                               int(total_num_steps / (end - start))))
 
-                if self.env_name == "StarCraft2":
-                    battles_won = []
-                    battles_game = []
-                    incre_battles_won = []
-                    incre_battles_game = []
-
-                    for i, info in enumerate(infos):
-                        if 'battles_won' in info[0].keys():
-                            battles_won.append(info[0]['battles_won'])
-                            incre_battles_won.append(info[0]['battles_won'] - last_battles_won[i])
-                        if 'battles_game' in info[0].keys():
-                            battles_game.append(info[0]['battles_game'])
-                            incre_battles_game.append(info[0]['battles_game'] - last_battles_game[i])
-
-                    incre_win_rate = np.sum(incre_battles_won) / np.sum(incre_battles_game) if np.sum(
-                        incre_battles_game) > 0 else 0.0
-                    print("incre win rate is {}.".format(incre_win_rate))
+                if self.env_name == "gym_dragon":
+                    # env_infos = {}
+                    sum_score = 0
+                    for i in range(self.n_rollout_threads):
+                        sum_score += infos[i][self.index_to_agent_id[0]]['score']
+                    avg_score = round(sum_score / self.n_rollout_threads)
+                    print("average score is {}.".format(avg_score))
                     if self.use_wandb:
-                        wandb.log({"incre_win_rate": incre_win_rate}, step=total_num_steps)
+                        wandb.log({"average score": avg_score}, step=total_num_steps)
                     else:
-                        self.writter.add_scalars("incre_win_rate", {"incre_win_rate": incre_win_rate}, total_num_steps)
+                        self.writter.add_scalars("average score", {"average score": avg_score}, total_num_steps)
 
-                    last_battles_game = battles_game
-                    last_battles_won = battles_won
-
-                train_infos['dead_ratio'] = 1 - self.buffer.active_masks.sum() / reduce(lambda x, y: x * y, list(
-                    self.buffer.active_masks.shape))
-
+                train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
+                print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 self.log_train(train_infos, total_num_steps)
 
             # eval
@@ -104,17 +87,13 @@ class GNNGymDragonRunner(GNNRunner):
 
     def warmup(self):
         # reset env
-        obs = self.envs.reset()
-        print(obs)
-        # obs_list = []
-        # available_actions_list = []
-        # # iterate over ray multiagentdict
-        # for agent_id, value in obs:
-        #     obs_list.append(value)
-        #     available_actions_list.append()
+        obs, available_actions= self.envs.reset()
 
         # replay buffer
-        if not self.use_centralized_V:
+        if self.use_centralized_V:
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
+            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        else:
             share_obs = obs
 
         self.buffer.share_obs[0] = share_obs.copy()
@@ -154,12 +133,21 @@ class GNNGymDragonRunner(GNNRunner):
         scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic)
         scmu_cell_states_critic = _t2n(scmu_cell_states_critic)
 
+        # rearrange actions to multiagentdict format for gym_dragon
+        actions_env_list = []
+        for i in range(self.n_rollout_threads):
+            agent_actions_list = {}
+            for j in range(self.num_agents):
+                agent_actions_list[self.index_to_agent_id[j]] = actions[i, j]
+            actions_env_list.append(agent_actions_list)
+        actions_env = np.array(actions_env_list)
+
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
+               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env
 
     def insert(self, data):
-        obs, share_obs, rewards, dones, infos, available_actions, \
+        obs, rewards, dones, infos, available_actions, \
         values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
         somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = data
@@ -179,38 +167,20 @@ class GNNGymDragonRunner(GNNRunner):
         scmu_hidden_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_hidden_states_critic.shape[3:]), dtype=np.float32)
         scmu_cell_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.scmu_cell_states_critic.shape[3:]), dtype=np.float32)
 
-        active_masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-        active_masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
-        active_masks[dones_env == True] = np.ones(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
-
-        bad_masks = np.array(
-            [[[0.0] if info[agent_id]['bad_transition'] else [1.0] for agent_id in range(self.num_agents)] for info in
-             infos])
-
-        if not self.use_centralized_V:
+        if self.use_centralized_V:
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
+            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        else:
             share_obs = obs
 
         self.buffer.insert(share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, \
                            scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, \
-                           scmu_cell_states_critic, actions, action_log_probs, values, rewards, masks, bad_masks, active_masks, \
-                           available_actions)
-
-    def log_train(self, train_infos, total_num_steps):
-        train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)
-        for k, v in train_infos.items():
-            if self.use_wandb:
-                wandb.log({k: v}, step=total_num_steps)
-            else:
-                self.writter.add_scalars(k, {k: v}, total_num_steps)
+                           scmu_cell_states_critic, actions, action_log_probs, values, rewards, masks, \
+                           available_actions=available_actions)
 
     @torch.no_grad()
     def eval(self, total_num_steps):
-        eval_battles_won = 0
-        eval_episode = 0
-
         eval_episode_rewards = []
-        one_episode_rewards = []
-
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
         eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
@@ -219,7 +189,7 @@ class GNNGymDragonRunner(GNNRunner):
         eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
-        while True:
+        for eval_step in range(self.episode_length):
             self.trainer.prep_rollout()
             eval_actions, eval_somu_hidden_states_actor, eval_somu_cell_states_actor, eval_scmu_hidden_states_actor, eval_scmu_cell_states_actor = \
                 self.trainer.policy.act(eval_obs,
@@ -238,10 +208,19 @@ class GNNGymDragonRunner(GNNRunner):
             eval_scmu_hidden_states_actor = _t2n(eval_scmu_hidden_states_actor)
             eval_scmu_cell_states_actor = _t2n(eval_scmu_cell_states_actor)
 
+            # rearrange actions to multiagentdict format for gym_dragon
+            eval_actions_env_list = []
+            for i in range(self.n_eval_rollout_threads):
+                eval_agent_actions_list = {}
+                for j in range(self.num_agents):
+                    eval_agent_actions_list[self.index_to_agent_id[j]] = eval_actions[i, j]
+                eval_actions_env_list.append(eval_agent_actions_list)
+            eval_actions_env = np.array(eval_actions_env_list)
+
             # Observe reward and next obs
             eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
-                eval_actions)
-            one_episode_rewards.append(eval_rewards)
+                eval_actions_env)
+            eval_episode_rewards.append(eval_rewards)
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
@@ -252,22 +231,19 @@ class GNNGymDragonRunner(GNNRunner):
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 
-            for eval_i in range(self.n_eval_rollout_threads):
-                if eval_dones_env[eval_i]:
-                    eval_episode += 1
-                    eval_episode_rewards.append(np.sum(one_episode_rewards, axis=0))
-                    one_episode_rewards = []
-                    if eval_infos[eval_i][0]['won']:
-                        eval_battles_won += 1
+        eval_sum_score = 0
+        for i in range(self.n_eval_rollout_threads):
+            eval_sum_score += eval_infos[i][self.index_to_agent_id[0]]['score']
+        eval_avg_score = round(eval_sum_score / self.n_eval_rollout_threads)
+        print("eval average score is {}.".format(eval_avg_score))
+        if self.use_wandb:
+            wandb.log({"eval average score": eval_avg_score}, step=total_num_steps)
+        else:
+            self.writter.add_scalars("eval average score", {"eval average score": avg_score}, total_num_steps)
 
-            if eval_episode >= self.all_args.eval_episodes:
-                eval_episode_rewards = np.array(eval_episode_rewards)
-                eval_env_infos = {'eval_average_episode_rewards': eval_episode_rewards}
-                self.log_env(eval_env_infos, total_num_steps)
-                eval_win_rate = eval_battles_won / eval_episode
-                print("eval win rate is {}.".format(eval_win_rate))
-                if self.use_wandb:
-                    wandb.log({"eval_win_rate": eval_win_rate}, step=total_num_steps)
-                else:
-                    self.writter.add_scalars("eval_win_rate", {"eval_win_rate": eval_win_rate}, total_num_steps)
-                break
+        eval_episode_rewards = np.array(eval_episode_rewards)
+        eval_env_infos = {}
+        eval_env_infos['eval_average_episode_rewards'] = np.sum(np.array(eval_episode_rewards), axis=0)
+        eval_average_episode_rewards = np.mean(eval_env_infos['eval_average_episode_rewards'])
+        print("eval average episode rewards of agent: " + str(eval_average_episode_rewards))
+        self.log_env(eval_env_infos, total_num_steps)

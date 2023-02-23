@@ -23,8 +23,8 @@ do
     python ../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp} --region ${region} \
     --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads} --n_rollout_threads ${n_rollout_threads} \
     --num_mini_batch ${num_mini_batch} --episode_length ${episode_length} --num_env_steps ${num_env_steps} --lr ${lr} \
-    --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --use_value_active_masks --use_eval \
-    --eval_episodes ${eval_episodes}
+    --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --use_eval --eval_episodes ${eval_episodes} \
+    --include_full_obs
     # --include_perturbations
     # --include_explore_reward --include_inspect_reward --include_defusal_reward --include_beacon_reward --include_proximity_reward
     # --include_memory_obs --include_edge_index_obs --include_all_agent_locations_obs --include_all_agent_nodes_obs --include_full_obs

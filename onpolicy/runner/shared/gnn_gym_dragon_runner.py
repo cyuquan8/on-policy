@@ -181,7 +181,7 @@ class GNNGymDragonRunner(GNNRunner):
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode_rewards = []
-        eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
+        eval_obs, eval_available_actions = self.eval_envs.reset()
 
         eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
         eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
@@ -218,7 +218,7 @@ class GNNGymDragonRunner(GNNRunner):
             eval_actions_env = np.array(eval_actions_env_list)
 
             # Observe reward and next obs
-            eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
+            eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
                 eval_actions_env)
             eval_episode_rewards.append(eval_rewards)
 

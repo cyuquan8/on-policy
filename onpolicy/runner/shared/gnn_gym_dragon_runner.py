@@ -183,10 +183,10 @@ class GNNGymDragonRunner(GNNRunner):
         eval_episode_rewards = []
         eval_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
-        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_somu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_hidden_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+        eval_scmu_cell_states_actor = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         for eval_step in range(self.episode_length):
@@ -211,7 +211,7 @@ class GNNGymDragonRunner(GNNRunner):
             # rearrange actions to multiagentdict format for gym_dragon
             eval_actions_env_list = []
             for i in range(self.n_eval_rollout_threads):
-                eval_agent_actions_list = {}
+                eval_agent_actions_list = {}    
                 for j in range(self.num_agents):
                     eval_agent_actions_list[self.index_to_agent_id[j]] = eval_actions[i, j]
                 eval_actions_env_list.append(eval_agent_actions_list)
@@ -224,10 +224,10 @@ class GNNGymDragonRunner(GNNRunner):
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
-            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_num_layers, self.somu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
-            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_num_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_somu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_hidden_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
+            eval_scmu_cell_states_actor[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), dtype=np.float32)
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 

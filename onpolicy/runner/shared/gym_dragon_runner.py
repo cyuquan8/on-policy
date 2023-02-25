@@ -253,7 +253,7 @@ class GymDragonRunner(Runner):
                     envs.render('human')
 
             print("average episode rewards is: " + str(np.mean(np.sum(np.array(episode_rewards), axis=0))))
-            print(f'episode score is: {infos[0][self.index_to_agent_id[0]]['score']}')
+            print(f'episode score is: {infos[0][self.index_to_agent_id[0]]["score"]}')
 
         if self.all_args.save_gifs:
             imageio.mimsave(str(self.gif_dir) + '/render.gif', all_frames, duration=self.all_args.ifi)

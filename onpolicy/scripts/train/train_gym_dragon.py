@@ -55,6 +55,7 @@ def parse_args(args, parser):
                         help="Which region of gym_dragon to run on")
     parser.add_argument("--include_perturbations", action='store_true', default=False)
     parser.add_argument('--num_agents', type=int, default=3, help="number of agents")
+    parser.add_argument("--color_tools_only", action='store_true', default=False)
     
     # reward wrappers
     parser.add_argument("--include_explore_reward", action='store_true', default=False)
@@ -69,6 +70,23 @@ def parse_args(args, parser):
     parser.add_argument("--include_all_agent_locations_obs", action='store_true', default=False)
     parser.add_argument("--include_all_agent_nodes_obs", action='store_true', default=False)
     parser.add_argument("--include_full_obs", action='store_true', default=False)
+
+    # budget weights for each region
+
+    # desert
+    parser.add_argument('--budget_weight_desert_perturbations', type=float, default=0.2)
+    parser.add_argument('--budget_weight_desert_communications', type=float, default=0.2)
+    parser.add_argument('--budget_weight_desert_bomb_additonal', type=float, default=0.2)
+
+    # forest
+    parser.add_argument('--budget_weight_forest_perturbations', type=float, default=0.2)
+    parser.add_argument('--budget_weight_forest_communications', type=float, default=0.2)
+    parser.add_argument('--budget_weight_forest_bomb_additonal', type=float, default=0.2)
+
+    # village
+    parser.add_argument('--budget_weight_village_perturbations', type=float, default=0.2)
+    parser.add_argument('--budget_weight_village_communications', type=float, default=0.2)
+    parser.add_argument('--budget_weight_village_bomb_additonal', type=float, default=0.2)
 
     all_args = parser.parse_known_args(args)[0]
 

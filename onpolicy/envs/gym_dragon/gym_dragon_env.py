@@ -1,3 +1,4 @@
+from gym_dragon.core.world import Region
 from gym_dragon.envs import DesertEnv, DragonEnv, ForestEnv, VillageEnv
 from gym_dragon.wrappers import (
     GymWrapper,
@@ -48,22 +49,60 @@ def GymDragonEnv(args):
             env = ProximityReward(env)
         return env
 
+    desert_budget_weights = {Region.desert: 
+                                {'perturbations': args.budget_weight_desert_perturbations, 
+                                 'communications': args.budget_weight_desert_communications, 
+                                 'bomb_additonal': args.budget_weight_desert_bomb_additonal
+                                }
+                            }
+    forest_budget_weights = {Region.forest: 
+                                {'perturbations': args.budget_weight_forest_perturbations, 
+                                 'communications': args.budget_weight_forest_communications, 
+                                 'bomb_additonal': args.budget_weight_forest_bomb_additonal
+                                }
+                            }
+    village_budget_weights = {Region.village: 
+                                {'perturbations': args.budget_weight_village_perturbations, 
+                                 'communications': args.budget_weight_village_communications, 
+                                 'bomb_additonal': args.budget_weight_village_bomb_additonal
+                                }
+                             }  
+    swamp_budget_weights = {Region.swamp: 
+                                {'perturbations': 0, 
+                                 'communications': 0, 
+                                 'bomb_additonal': 0
+                                }
+                           }  
+    budget_weights = {**desert_budget_weights,
+                      **forest_budget_weights,
+                      **village_budget_weights,
+                      **swamp_budget_weights,
+                     }                       
+
     if args.region == "all":
         env = DragonEnv(mission_length=args.episode_length, 
                         include_perturbations=args.include_perturbations,
-                        obs_wrapper=obs_wrapper)
+                        obs_wrapper=obs_wrapper,
+                        budget_weights=budget_weights,
+                        color_tools_only=args.color_tools_only)
     elif args.region == 'desert':
         env = DesertEnv(mission_length=args.episode_length, 
                         include_perturbations=args.include_perturbations,
-                        obs_wrapper=obs_wrapper)
+                        obs_wrapper=obs_wrapper,
+                        budget_weights=budget_weights,
+                        color_tools_only=args.color_tools_only)
     elif args.region == 'forest':
         env = ForestEnv(mission_length=args.episode_length, 
                         include_perturbations=args.include_perturbations,
-                        obs_wrapper=obs_wrapper)
+                        obs_wrapper=obs_wrapper,
+                        budget_weights=budget_weights,
+                        color_tools_only=args.color_tools_only)
     elif args.region == 'village':
         env = VillageEnv(mission_length=args.episode_length, 
                          include_perturbations=args.include_perturbations,
-                         obs_wrapper=obs_wrapper)
+                         obs_wrapper=obs_wrapper,
+                         budget_weights=budget_weights,
+                         color_tools_only=args.color_tools_only)
     
     env = reward_shapping_wrapper(env)
 

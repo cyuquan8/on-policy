@@ -8,7 +8,7 @@ n_training_threads=1
 n_rollout_threads=4
 num_mini_batch=1
 episode_length=900
-num_env_steps=100000000
+num_env_steps=1e10
 lr=0.0001
 critic_lr=0.0001
 ppo_epoch=15
@@ -41,6 +41,7 @@ do
     --fc_output_dims 64 --n_fc_layers 2 --n_gin_fc_layers 2 --rni --rni_ratio ${rni_ratio} --use_eval --n_eval_rollout_threads ${n_eval_rollout_threads} \
     --color_tools_only \
     --include_full_obs \
+    --include_explore_reward --include_inspect_reward --include_defusal_reward \
     --budget_weight_desert_perturbations ${budget_weight_desert_perturbations} \
     --budget_weight_desert_communications ${budget_weight_desert_communications} \
     --budget_weight_desert_communications ${budget_weight_desert_communications} \

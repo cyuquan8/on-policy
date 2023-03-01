@@ -64,6 +64,13 @@ def parse_args(args, parser):
     parser.add_argument("--include_beacon_reward", action='store_true', default=False)
     parser.add_argument("--include_proximity_reward", action='store_true', default=False)
 
+    # reward wrappers weights
+    parser.add_argument('--explore_reward_weight', type=float, default=0.1)
+    parser.add_argument('--inspect_reward_weight', type=float, default=0.1)
+    parser.add_argument('--defusal_reward_weight', type=float, default=0.1)
+    parser.add_argument('--beacon_reward_weight', type=float, default=0.1)
+    parser.add_argument('--proximity_reward_weight', type=float, default=0.1)
+
     # observations wrappers
     parser.add_argument("--include_memory_obs", action='store_true', default=False)
     parser.add_argument("--include_edge_index_obs", action='store_true', default=False)

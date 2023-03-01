@@ -25,6 +25,12 @@ budget_weight_village_perturbations=10
 budget_weight_village_communications=10 
 budget_weight_village_communications=10 
 
+explore_reward_weight=0.05
+inspect_reward_weight=0.05
+defusal_reward_weight=0.25
+beacon_reward_weight=0.1
+proximity_reward_weight=0.1
+
 exp="region_${region}_n_rollout_threads_${n_rollout_threads}_lr_${lr}_critic_lr_${critic_lr}_ppo_epoch_${ppo_epoch}_clip_param_${clip_param}"
 
 echo "env is ${env}, region is ${region}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
@@ -47,10 +53,16 @@ do
     --budget_weight_village_perturbations ${budget_weight_village_perturbations} \
     --budget_weight_village_communications ${budget_weight_village_communications} \
     --budget_weight_village_communications ${budget_weight_village_communications} \
+    --explore_reward_weight ${explore_reward_weight} \
+    --inspect_reward_weight ${inspect_reward_weight} \
+    --defusal_reward_weight ${defusal_reward_weight} \
+    --beacon_reward_weight ${beacon_reward_weight} \
+    --proximity_reward_weight ${proximity_reward_weight} \
     # --include_perturbations
     # --include_explore_reward --include_inspect_reward --include_defusal_reward --include_beacon_reward --include_proximity_reward
     # --include_memory_obs --include_edge_index_obs --include_all_agent_locations_obs --include_all_agent_nodes_obs --include_full_obs
     # --budget_weight_desert_perturbations --budget_weight_desert_communications --budget_weight_desert_communications
     # --budget_weight_forest_perturbations --budget_weight_forest_communications --budget_weight_forest_communications
     # --budget_weight_village_perturbations --budget_weight_village_communications --budget_weight_village_communications
+    # --explore_reward_weight --inspect_reward_weight --defusal_reward_weight --beacon_reward_weight --proximity_reward_weight
 done

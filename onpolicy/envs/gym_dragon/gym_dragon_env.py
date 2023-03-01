@@ -38,15 +38,15 @@ def GymDragonEnv(args):
         return obs
     def reward_shapping_wrapper(env):
         if args.include_explore_reward:
-            env = ExploreReward(env)
+            env = ExploreReward(env, weight=args.explore_reward_weight)
         if args.include_inspect_reward:
-            env = InspectReward(env)
+            env = InspectReward(env, weight=args.inspect_reward_weight)
         if args.include_defusal_reward:
-            env = DefusalReward(env)
+            env = DefusalReward(env, weight=args.defusal_reward_weight)
         if args.include_beacon_reward:
-            env = BeaconReward(env)
+            env = BeaconReward(env, weight=args.beacon_reward_weight)
         if args.include_proximity_reward:
-            env = ProximityReward(env)
+            env = ProximityReward(env, weight=args.proximity_reward_weight)
         return env
 
     desert_budget_weights = {Region.desert: 

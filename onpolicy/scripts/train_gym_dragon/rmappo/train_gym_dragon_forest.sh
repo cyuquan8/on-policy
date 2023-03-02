@@ -25,11 +25,11 @@ budget_weight_village_perturbations=10
 budget_weight_village_communications=10 
 budget_weight_village_communications=10 
 
-explore_reward_weight=0.05
-inspect_reward_weight=0.05
-defusal_reward_weight=0.25
-beacon_reward_weight=0.1
-proximity_reward_weight=0.1
+explore_reward_weight=0.01
+inspect_reward_weight=0.01
+defusal_reward_weight=0.1
+beacon_reward_weight=0.01
+proximity_reward_weight=0.01
 
 exp="region_${region}_n_rollout_threads_${n_rollout_threads}_lr_${lr}_critic_lr_${critic_lr}_ppo_epoch_${ppo_epoch}_clip_param_${clip_param}"
 

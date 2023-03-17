@@ -190,7 +190,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")

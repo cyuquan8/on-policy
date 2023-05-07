@@ -1,13 +1,7 @@
-# ==========================================================================================================================================================
-# neural network (nn) module
-# purpose: classes and functions to build a scalable neural network model
-# ==========================================================================================================================================================
-
 import torch as T
 import torch.nn as nn
 import torch_geometric.nn as gnn
 
-from functools import partial
 from onpolicy.algorithms.utils.dna_gatv2_conv import DNAGATv2Conv
 
 def activation_function(activation):
@@ -44,7 +38,8 @@ def weights_initialisation_function_generator(weight_initialisation,
         return init_weight
     elif weight_initialisation == "kaiming_uniform":
         # recommend for relu / leaky relu
-        assert (activation_func == "relu" or activation_func == "leaky_relu"), "Non-linearity recommended to be 'relu' or 'leaky_relu'"
+        assert (activation_func == "relu" or activation_func == "leaky_relu"), \
+            "Non-linearity recommended to be 'relu' or 'leaky_relu'"
         def init_weight(m):
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_uniform_(m.weight, 
@@ -54,7 +49,8 @@ def weights_initialisation_function_generator(weight_initialisation,
         return init_weight
     elif weight_initialisation == "kaiming_normal":
         # recommend for relu / leaky relu
-        assert (activation_func == "relu" or activation_func == "leaky_relu"), "Non-linearity recommended to be 'relu' or 'leaky_relu'"
+        assert (activation_func == "relu" or activation_func == "leaky_relu"), \
+            "Non-linearity recommended to be 'relu' or 'leaky_relu'"
         def init_weight(m):
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, 
@@ -85,13 +81,28 @@ def weights_initialisation_function_generator(weight_initialisation,
             pass
         return init_weight
 
+class Conv2DAutoPadding(nn.Conv2d):
+    """
+    class to set padding dynamically based on kernel size to preserve dimensions of height and width after conv
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """ 
+        class constructor for conv_2d_auto_padding to alter padding attributes of nn.Conv2d 
+        """
+        # inherit class constructor attributes from nn.Conv2d
+        super().__init__(*args, **kwargs)
+        
+        # dynamically adds padding based on the kernel_size
+        self.padding =  (self.kernel_size[0] // 2, self.kernel_size[1] // 2) 
+
 class MLPBlock(nn.Module):
     """
     class to build basic fully connected block 
     """
     
-    def __init__(self, input_shape, output_shape, activation_func="relu", weight_initialisation="default", *args, **kwargs):
-        
+    def __init__(self, input_shape, output_shape, activation_func="relu", weight_initialisation="default", *args, 
+        **kwargs):
         """
         class constructor that creates the layers attributes for MLPBlock 
         """
@@ -119,11 +130,59 @@ class MLPBlock(nn.Module):
         )
         
         # weight initialisation
-        self.block.apply(weights_initialisation_function_generator(weight_initialisation, activation_func, *args, **kwargs))
+        self.block.apply(weights_initialisation_function_generator(weight_initialisation, activation_func, *args, 
+                                                                   *kwargs))
 
     def forward(self, x):
         """ 
         function for forward pass of MLPBlock 
+        """
+        x = self.block(x)
+        
+        return x
+
+class VGGBlock(nn.Module):
+    """ 
+    class to build basic, vgg inspired block 
+    """
+    
+    def __init__(self, input_channels, output_channels, activation_func, conv, dropout_p, max_pool_kernel):
+        """ 
+        class constructor that creates the layers attributes for VGGBlock 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+        
+        # input and output channels for conv (num of filters)
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # activation function for after batch norm
+        self.activation_func = activation_func
+        # class of conv
+        self.conv = conv
+        # dropout probablity
+        self.dropout_p = dropout_p
+        # size of kernel for maxpooling
+        self.max_pool_kernel = max_pool_kernel
+        
+        # basic vgg_block. input --> conv --> batch norm --> activation func --> dropout --> max pool
+        self.block = nn.Sequential(
+            # conv
+            self.conv(self.input_channels, self.output_channels),
+            # batch norm
+            nn.BatchNorm2d(self.output_channels),
+            # activation func
+            activation_function(self.activation_func),
+            # dropout
+            nn.Dropout2d(self.dropout_p),
+            # maxpooling
+            # ceil mode to True to ensure take care of odd dimensions accounted for
+            nn.MaxPool2d(self.max_pool_kernel, ceil_mode=True)
+        )
+
+    def forward(self, x):
+        """ 
+        function for forward pass of VGGBlock 
         """
         x = self.block(x)
         
@@ -134,7 +193,8 @@ class DNAGATv2Block(nn.Module):
     class to build DNAGATv2Block 
     """
 
-    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
+    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, 
+                 negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
         """ 
         class constructor for attributes of the DNAGATv2Block 
         """
@@ -168,11 +228,15 @@ class DNAGATv2Block(nn.Module):
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # DNAGATv2Conv block 
-                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, concat=concat,  
-                                                      negative_slope=negative_slope, dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, fill_value=fill_value, bias=bias), 
+                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, 
+                                                      att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, 
+                                                      concat=concat, negative_slope=negative_slope, dropout=dropout, 
+                                                      add_self_loops=add_self_loops, edge_dim=edge_dim, 
+                                                      fill_value=fill_value, bias=bias), 
                                          'x, edge_index -> x'), 
                                         # graph norm
-                                        (gnn.GraphNorm(self.output_channels * self.att_heads if concat == True else self.output_channels), 'x -> x')
+                                        (gnn.GraphNorm(self.output_channels * self.att_heads \
+                                                       if concat == True else self.output_channels), 'x -> x')
                                     ]
         )  
 
@@ -189,7 +253,8 @@ class GINBlock(nn.Module):
     class to build GINBlock 
     """
 
-    def __init__(self, input_channels, output_channels, n_gin_fc_layers, activation_func="relu", eps=0.0, train_eps=False, edge_dim=None):
+    def __init__(self, input_channels, output_channels, n_gin_fc_layers, activation_func="relu", eps=0.0, 
+                 train_eps=False, edge_dim=None):
         """ 
         class constructor for attributes of the GINBlock 
         """
@@ -233,7 +298,8 @@ class GINBlock(nn.Module):
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # gine block 
-                                        (gnn.GINConv(nn=self.nn, eps=self.eps, train_eps=self.train_eps, edge_dim=self.edge_dim), 
+                                        (gnn.GINConv(nn=self.nn, eps=self.eps, train_eps=self.train_eps, 
+                                                     edge_dim=self.edge_dim), 
                                          'x, edge_index -> x'), 
                                         # graph norm
                                         (gnn.GraphNorm(self.output_channels), 'x -> x')
@@ -270,7 +336,8 @@ class NNLayers(nn.Module):
         # module list of layers with same args and kwargs
         self.blocks = nn.ModuleList([
             self.block(self.input_channels, self.output_channels[0], *args, **kwargs),
-            *[self.block(input_channels, output_channels, *args, **kwargs) for (input_channels, output_channels) in self.input_output_list]   
+            *[self.block(input_channels, output_channels, *args, **kwargs) \
+            for (input_channels, output_channels) in self.input_output_list]   
         ])
 
     def forward(self, x, *args, **kwargs):
@@ -283,9 +350,24 @@ class NNLayers(nn.Module):
             
         return x 
 
+    def get_flat_output_shape(self, input_shape):
+        """ 
+        function to obtain number of features after flattening after convolution layers 
+        """
+        # initialise dummy tensor of ones with input shape
+        x = T.ones(1, *input_shape)
+        # feed dummy tensor to blocks by iterating over each block
+        for block in self.blocks:
+            x = block(x)
+        # flatten resulting tensor and obtain number of features
+        n_size = x.view(1, -1).size(1)
+        
+        return n_size
+
 class DNAGATv2Layers(NNLayers):
     """ 
-    class to build layers of DNAGATv2Conv blocks specfically. DNAGATv2Conv is unique from other blocks as it requries past layers as its inputs
+    class to build layers of DNAGATv2Conv blocks specfically. 
+    DNAGATv2Conv is unique from other blocks as it requries past layers as its inputs
     """
 
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):

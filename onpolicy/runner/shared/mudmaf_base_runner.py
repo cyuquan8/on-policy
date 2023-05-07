@@ -3,16 +3,16 @@ import os
 import torch
 import wandb
 
-from onpolicy.utils.shared_buffer import SharedReplayBuffer
+from onpolicy.utils.shared_mudmaf_buffer import SharedMuDMAFReplayBuffer as SharedReplayBuffer
 from tensorboardX import SummaryWriter
 
 def _t2n(x):
     """Convert torch tensor to a numpy array."""
     return x.detach().cpu().numpy()
 
-class Runner(object):
+class MuDMAFRunner(object):
     """
-    Base class for training recurrent policies.
+    Base class for training MuDMAF.
     :param config: (dict) Config dictionary containing parameters for training.
     """
     def __init__(self, config):
@@ -37,10 +37,13 @@ class Runner(object):
         self.n_eval_rollout_threads = self.all_args.n_eval_rollout_threads
         self.n_render_rollout_threads = self.all_args.n_render_rollout_threads
         self.use_linear_lr_decay = self.all_args.use_linear_lr_decay
-        self.hidden_size = self.all_args.hidden_size
         self.use_wandb = self.all_args.use_wandb
         self.use_render = self.all_args.use_render
-        self.recurrent_N = self.all_args.recurrent_N
+
+        # mudmaf parameters
+        assert self.algorithm_name == 'mudmaf_mappo', f'algorithm name is {self.algorithm_name} and not mudmaf_mappo'
+        self.lstm_hidden_size = self.all_args.mudmaf_lstm_hidden_size
+        self.lstm_n_layers = self.all_args.mudmaf_lstm_n_layers       
 
         # interval
         self.save_interval = self.all_args.save_interval
@@ -51,31 +54,25 @@ class Runner(object):
         # dir
         self.model_dir = self.all_args.model_dir
 
-        if self.use_render:
-            import imageio
-            self.run_dir = config["run_dir"]
-            self.gif_dir = str(self.run_dir / 'gifs')
-            if not os.path.exists(self.gif_dir):
-                os.makedirs(self.gif_dir)
+        if self.use_wandb:
+            self.save_dir = str(wandb.run.dir)
+            self.run_dir = str(wandb.run.dir)
         else:
-            if self.use_wandb:
-                self.save_dir = str(wandb.run.dir)
-                self.run_dir = str(wandb.run.dir)
-            else:
-                self.run_dir = config["run_dir"]
-                self.log_dir = str(self.run_dir / 'logs')
-                if not os.path.exists(self.log_dir):
-                    os.makedirs(self.log_dir)
-                self.writter = SummaryWriter(self.log_dir)
-                self.save_dir = str(self.run_dir / 'models')
-                if not os.path.exists(self.save_dir):
-                    os.makedirs(self.save_dir)
+            self.run_dir = config["run_dir"]
+            self.log_dir = str(self.run_dir / 'logs')
+            if not os.path.exists(self.log_dir):
+                os.makedirs(self.log_dir)
+            self.writter = SummaryWriter(self.log_dir)
+            self.save_dir = str(self.run_dir / 'models')
+            if not os.path.exists(self.save_dir):
+                os.makedirs(self.save_dir)
 
-        from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
-        from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+        from onpolicy.algorithms.mudmaf_mappo.mudmaf_mappo import MuDMAF_MAPPO as TrainAlgo
+        from onpolicy.algorithms.r_mappo.algorithm.mudmafMAPPOPolicy import MuDMAF_MAPPOPolicy as Policy
 
         if self.all_args.env_name == 'gym_dragon':
-            share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space
+            share_observation_space = self.envs.share_observation_space if self.use_centralized_V \
+                                      else self.envs.observation_space
 
             self.all_args.num_agents = self.num_agents
 
@@ -99,7 +96,8 @@ class Runner(object):
                                              share_observation_space,
                                              self.envs.action_space)
         else:
-            share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
+            share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else \
+                                      self.envs.observation_space[0]
 
             self.all_args.num_agents = self.num_agents
 
@@ -147,8 +145,10 @@ class Runner(object):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
         next_values = self.trainer.policy.get_values(np.concatenate(self.buffer.share_obs[-1]),
-                                                np.concatenate(self.buffer.rnn_states_critic[-1]),
-                                                np.concatenate(self.buffer.masks[-1]))
+                                                     np.concatenate(self.buffer.share_goals[-1]),
+                                                     np.concatenate(self.buffer.lstm_hidden_states_critic[-1]),
+                                                     np.concatenate(self.buffer.lstm_cell_states_critic[-1]),
+                                                     np.concatenate(self.buffer.masks[-1]))
         next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
     

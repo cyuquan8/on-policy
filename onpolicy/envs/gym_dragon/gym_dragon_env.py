@@ -67,42 +67,52 @@ def GymDragonEnv(args):
                                  'bomb_additonal': args.budget_weight_village_bomb_additonal
                                 }
                              }  
-    swamp_budget_weights = {Region.swamp: 
-                                {'perturbations': 0, 
-                                 'communications': 0, 
-                                 'bomb_additonal': 0
-                                }
-                           }  
+   
     budget_weights = {**desert_budget_weights,
                       **forest_budget_weights,
-                      **village_budget_weights,
-                      **swamp_budget_weights,
+                      **village_budget_weights
                      }                       
 
     if args.region == "all":
-        env = DragonEnv(mission_length=args.episode_length, 
-                        include_perturbations=args.include_perturbations,
+        env = DragonEnv(mission_length=args.episode_length,
+                        recon_phase_length=arg.recon_phase_length,
+                        seconds_per_timestep=arg.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
-                        color_tools_only=args.color_tools_only)
+                        color_tools_only=args.color_tools_only,
+                        include_fuse_bombs=args.include_fuse_bombs,
+                        include_fire_bombs=args.include_fire_bombs,
+                        include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'desert':
-        env = DesertEnv(mission_length=args.episode_length, 
-                        include_perturbations=args.include_perturbations,
+        env = DesertEnv(mission_length=args.episode_length,
+                        recon_phase_length=arg.recon_phase_length,
+                        seconds_per_timestep=arg.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
-                        color_tools_only=args.color_tools_only)
+                        color_tools_only=args.color_tools_only,
+                        include_fuse_bombs=args.include_fuse_bombs,
+                        include_fire_bombs=args.include_fire_bombs,
+                        include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'forest':
-        env = ForestEnv(mission_length=args.episode_length, 
-                        include_perturbations=args.include_perturbations,
+        env = ForestEnv(mission_length=args.episode_length,
+                        recon_phase_length=arg.recon_phase_length,
+                        seconds_per_timestep=arg.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
-                        color_tools_only=args.color_tools_only)
+                        color_tools_only=args.color_tools_only,
+                        include_fuse_bombs=args.include_fuse_bombs,
+                        include_fire_bombs=args.include_fire_bombs,
+                        include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'village':
-        env = VillageEnv(mission_length=args.episode_length, 
-                         include_perturbations=args.include_perturbations,
+        env = VillageEnv(mission_length=args.episode_length,
+                         recon_phase_length=arg.recon_phase_length,
+                         seconds_per_timestep=arg.seconds_per_timestep,
                          obs_wrapper=obs_wrapper,
                          budget_weights=budget_weights,
-                         color_tools_only=args.color_tools_only)
+                         color_tools_only=args.color_tools_only,
+                         include_fuse_bombs=args.include_fuse_bombs,
+                         include_fire_bombs=args.include_fire_bombs,
+                         include_chained_bombs=args.include_chained_bombs)
     
     env = reward_shapping_wrapper(env)
 

@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"]`
+            specifiy the algorithm, including `["rmappo", "mappo", "ippo","gcmnet_dna_gatv2_mappo", "gcmnet_gin_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -77,35 +77,53 @@ def get_config():
         --data_chunk_length <int>
             Time length of chunks used to train a recurrent_policy, default 10.
 
-    GCM network parameters:
-        --n_gnn_layers <int>
-            Number of GNN layers for GCM actor and critic network, (default: 3)
-        --somu_n_layers <int>
-            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network, (default: 3)
-        --somu_lstm_hidden_size <int>
-            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network, (default: 128)
-        --somu_multi_att_n_heads <int>
-            Number of Heads for Multi-Attention for SOMU outputs in GCM actor network, (default: 2)
-        --scmu_n_layers <int>
-            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network, (default: 3)
-        --scmu_lstm_hidden_size <int>
-            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network, (default: 128)
-        --scmu_multi_att_n_heads <int>
-            Number of Heads for Multi-Attention for SCMU outputs in GCM actor network, (default: 2)
-        --fc_output_dims <int>
-            Hidden Size for MLP layers in GCM actor and critic network, (default: 128)
-        --n_fc_layers <int>
-            Number of MLP layers in GCM actor and critic network, (default: 3)
-        --knn
+    GCMNet parameters:
+        --gcmnet_n_gnn_layers <int>
+            Number of GNN layers for GCMNet actor and critic network, (default: 3)
+        --gcmnet_somu_n_layers <int>
+            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network, (default: 3)
+        --gcmnet_somu_lstm_hidden_size <int>
+            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network, (default: 128)
+        --gcmnet_somu_multi_att_n_heads <int>
+            Number of Heads for Multi-Attention for SOMU outputs in GCMNet actor network, (default: 2)
+        --gcmnet_scmu_n_layers <int>
+            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network, (default: 3)
+        --gcmnet_scmu_lstm_hidden_size <int>
+            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet actor network, (default: 128)
+        --gcmnet_scmu_multi_att_n_heads <int>
+            Number of Heads for Multi-Attention for SCMU outputs in GCMNet actor network, (default: 2)
+        --gcmnet_fc_output_dims <int>
+            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 128)
+        --gcmnet_n_fc_layers <int>
+            Number of MLP layers in GCMNet actor and critic network, (default: 3)
+        --gcmnet_knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
-        --k <int>
+        --gcmnet_k <int>
             Number of Neighbours for K-Nearest Neighbour (default: 1)
-        --rni
+        --gcmnet_rni
             Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN (default : False)
-        --rni_ratio <float>
+        --gcmnet_rni_ratio <float>
             Ratio of randomly generated vector in RNI to original observation feature vector (default : 0.25)
-        --n_gin_fc_layers <int>
-            Number of MLP layers in GCM GINConv (default: 2)
+        --gcmnet_n_gin_fc_layers <int>
+            Number of MLP layers in GCMNet GINConv (default: 2)
+
+    MuDMAF parameters:
+        --mudmaf_conv_output_dims <int>
+            Output dimensions for convolutions in MuDMAF network (default: 256)
+        --mudmaf_n_vgg_conv_layers <int>
+            Number of VGG-based convolution layers in MuDMAF network (default: 256)
+        --mudmaf_vgg_conv_kernel_size <int>
+            Kernel size for convolution in convolution layers in MuDMAF network (default: 3)
+        --mudmaf_vgg_maxpool_kernel_size <int>
+            Maxpool kernel size for convolution in convolution layers in MuDMAF network (default: 2)
+        --mudmaf_n_goal_fc_layers <int>
+            Number of MLP layers for goal features (default: 2)
+        --mudmaf_n_post_concat_fc_layers <int>
+            Number of MLP layers for features post concatenation of observation and goal features (default: 2)
+        --mudmaf_lstm_hidden_size <int>
+            Hidden size for LSTM in MuDMAF network (default: 512)
+        --mudmaf_lstm_n_layers <int>
+            Number of layers for LSTM in MuDMAF network (default: 1)
     
     Optimizer parameters:
         --lr <float>
@@ -190,7 +208,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo", "ippo","gcm_dna_gatv2_mappo", "gcm_gin_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo","gcmnet_dna_gatv2_mappo", "gcmnet_gin_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -243,21 +261,31 @@ def get_config():
     parser.add_argument("--gain", type=float, default=0.01,
                         help="The gain # of last action layer")
 
-    # gcm network parameters
-    parser.add_argument("--n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCM actor and critic network")
-    parser.add_argument("--somu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCM actor network")
-    parser.add_argument("--somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCM actor network")
-    parser.add_argument("--somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCM actor network")
-    parser.add_argument("--scmu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCM actor network")
-    parser.add_argument("--scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCM actor network")
-    parser.add_argument("--scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCM actor network")
-    parser.add_argument("--fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCM actor and critic network")
-    parser.add_argument("--n_fc_layers", type=int, default=3, help="Number of MLP layers in GCM actor and critic network")
-    parser.add_argument("--knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
-    parser.add_argument("--k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
-    parser.add_argument("--rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
-    parser.add_argument("--rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
-    parser.add_argument("--n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCM GINConv")
+    # gcmnet network parameters
+    parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_somu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network")
+    parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network")
+    parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCMNet actor network")
+    parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network")
+    parser.add_argument("--gcmnet_scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet actor network")
+    parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCMNet actor network")
+    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_n_fc_layers", type=int, default=3, help="Number of MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
+    parser.add_argument("--gcmnet_k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
+    parser.add_argument("--gcmnet_rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
+    parser.add_argument("--gcmnet_rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
+    parser.add_argument("--gcmnet_n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet GINConv")
+
+    # mudmaf network parameters
+    parser.add_argument("--mudmaf_conv_output_dims", type=int, default=256, help="Output dimensions for convolutions in MuDMAF network")
+    parser.add_argument("--mudmaf_n_vgg_conv_layers", type=int, default=2, help="Number of VGG-based convolution layers in MuDMAF network")
+    parser.add_argument("--mudmaf_vgg_conv_kernel_size", type=int, default=3, help="Kernel size for convolution in convolution layers in MuDMAF network")
+    parser.add_argument("--mudmaf_vgg_maxpool_kernel_size", type=int, default=2, help="Maxpool kernel size for convolution in convolution layers in MuDMAF network")
+    parser.add_argument("--mudmaf_n_goal_fc_layers", type=int, default=2, help="Number of MLP layers for goal features")
+    parser.add_argument("--mudmaf_n_post_concat_fc_layers", type=int, default=2, help="Number of MLP layers for features post concatenation of observation and goal features")
+    parser.add_argument("--mudmaf_lstm_hidden_size", type=int, default=512, help="Hidden size for LSTM in MuDMAF network")
+    parser.add_argument("--mudmaf_lstm_n_layers", type=int, default=1, help="Number of layers for LSTM in MuDMAF network")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

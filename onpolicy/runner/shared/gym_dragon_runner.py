@@ -1,9 +1,10 @@
-import time
-import numpy as np
-import torch
-from onpolicy.runner.shared.base_runner import Runner
-import wandb
 import imageio
+import numpy as np
+import time
+import torch
+import wandb
+
+from onpolicy.runner.shared.base_runner import Runner
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -28,7 +29,7 @@ class GymDragonRunner(Runner):
                 # Sample actions
                 values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
                     
-                # Obser reward and next obs
+                # Observe reward and next obs
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env)
             
                 data = obs, rewards, dones, infos, available_actions, \
@@ -131,10 +132,13 @@ class GymDragonRunner(Runner):
         return values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env
 
     def insert(self, data):
-        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
+        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, \
+        rnn_states_critic = data
 
-        rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-        rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
+        rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), 
+                                             dtype=np.float32)
+        rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), 
+                                                    dtype=np.float32)
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
@@ -144,15 +148,16 @@ class GymDragonRunner(Runner):
         else:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks, 
-                           available_actions=available_actions)
+        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, 
+                           masks, available_actions=available_actions)
 
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode_rewards = []
         eval_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_rnn_states = np.zeros((self.n_eval_rollout_threads, *self.buffer.rnn_states.shape[2:]), dtype=np.float32)
+        eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), 
+                                   dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         for eval_step in range(self.episode_length):
@@ -160,7 +165,7 @@ class GymDragonRunner(Runner):
             eval_action, eval_rnn_states = self.trainer.policy.act(np.concatenate(eval_obs),
                                                 np.concatenate(eval_rnn_states),
                                                 np.concatenate(eval_masks),
-                                                np.concatenate(eval_available_actions),
+                                                available_actions=np.concatenate(eval_available_actions),
                                                 deterministic=True)
             eval_actions = np.array(np.split(_t2n(eval_action), self.n_eval_rollout_threads))
             eval_rnn_states = np.array(np.split(_t2n(eval_rnn_states), self.n_eval_rollout_threads))
@@ -175,10 +180,12 @@ class GymDragonRunner(Runner):
             eval_actions_env = np.array(eval_actions_env_list)
 
             # Obser reward and next obs
-            eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(eval_actions_env)
+            eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = \
+                self.eval_envs.step(eval_actions_env)
             eval_episode_rewards.append(eval_rewards)
 
-            eval_rnn_states[eval_dones == True] = np.zeros(((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+            eval_rnn_states[eval_dones == True] = \
+                np.zeros(((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
             eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones == True] = np.zeros(((eval_dones == True).sum(), 1), dtype=np.float32)
 
@@ -218,7 +225,8 @@ class GymDragonRunner(Runner):
             else:
                 envs.render('human')
 
-            rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+            rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), 
+                                  dtype=np.float32)
             masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
             
             episode_rewards = []
@@ -248,7 +256,8 @@ class GymDragonRunner(Runner):
                 obs, rewards, dones, infos, available_actions = envs.step(actions_env)
                 episode_rewards.append(rewards)
 
-                rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+                rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), 
+                                                     dtype=np.float32)
                 masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
                 masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 

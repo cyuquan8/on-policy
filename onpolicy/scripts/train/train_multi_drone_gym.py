@@ -8,8 +8,8 @@ import numpy as np
 import torch
 
 from onpolicy.config import get_config
-from onpolicy.envs.gym_dragon.gym_dragon_env import GymDragonEnv
-from onpolicy.envs.env_wrappers import AvailableActionsDummyVecEnv, AvailableActionsSubprocVecEnv
+from onpolicy.envs.multi_drone_gym.multi_drone_gym import MultiDroneGym
+from onpolicy.envs.env_wrappers import AvailableActionsGoalsDummyVecEnv, AvailableActionsGoalsSubprocVecEnv
 from pathlib import Path
 
 """Train script for gym_dragon."""
@@ -17,8 +17,8 @@ from pathlib import Path
 def make_train_env(all_args):
     def get_env_fn(rank):
         def init_env():
-            if all_args.env_name == "gym_dragon":
-                env = GymDragonEnv(all_args)
+            if all_args.env_name == "multi_drone_gym":
+                env = MultiDroneGym(all_args)
             else:
                 print("Can not support the " +
                       all_args.env_name + "environment.")
@@ -27,15 +27,15 @@ def make_train_env(all_args):
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
-        return AvailableActionsDummyVecEnv([get_env_fn(0)])
+        return AvailableActionsGoalsDummyVecEnv([get_env_fn(0)])
     else:
-        return AvailableActionsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+        return AvailableActionsGoalsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def make_eval_env(all_args):
     def get_env_fn(rank):
         def init_env():
-            if all_args.env_name == "gym_dragon":
+            if all_args.env_name == "multi_drone_gym":
                 env = GymDragonEnv(all_args)
             else:
                 print("Can not support the " +
@@ -45,20 +45,17 @@ def make_eval_env(all_args):
             return env
         return init_env
     if all_args.n_eval_rollout_threads == 1:
-        return AvailableActionsDummyVecEnv([get_env_fn(0)])
+        return AvailableActionsGoalsDummyVecEnv([get_env_fn(0)])
     else:
-        return AvailableActionsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)])
+        return AvailableActionsGoalsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)])
 
 
 def parse_args(args, parser):
+    parser.add_argument('--region', type=str, default='all',
+                        help="Which region of gym_dragon to run on")
+    parser.add_argument("--include_perturbations", action='store_true', default=False)
     parser.add_argument('--num_agents', type=int, default=3, help="number of agents")
-    parser.add_argument('--region', type=str, default='all', help="Which region of gym_dragon to run on")
-    parser.add_argument('--recon_phase_length', type=float, default=2*60)
-    parser.add_argument('--seconds_per_timestep', type=float, default=2.0)
     parser.add_argument("--color_tools_only", action='store_true', default=False)
-    parser.add_argument("--include_fuse_bombs", action='store_true', default=False)
-    parser.add_argument("--include_fire_bombs", action='store_true', default=False)
-    parser.add_argument("--include_chained_bombs", action='store_true', default=False)
     
     # reward wrappers
     parser.add_argument("--include_explore_reward", action='store_true', default=False)
@@ -107,25 +104,12 @@ def main(args):
     parser = get_config()
     all_args = parse_args(args, parser)
 
-    if all_args.algorithm_name == "rmappo":
-        print("u are choosing to use rmappo, we set use_recurrent_policy to be True")
+    if all_args.algorithm_name == "mudmaf_mappo":
+        print("u are choosing to use rmappo, we set use_recurrent_policy to be True & use_naive_recurrent_policy to be False")
         all_args.use_recurrent_policy = True
         all_args.use_naive_recurrent_policy = False
-    elif all_args.algorithm_name == "mappo":
-        print("u are choosing to use mappo, we set use_recurrent_policy & use_naive_recurrent_policy to be False")
-        all_args.use_recurrent_policy = False 
-        all_args.use_naive_recurrent_policy = False
-    elif all_args.algorithm_name == "ippo":
-        print("u are choosing to use ippo, we set use_centralized_V to be False")
-        all_args.use_centralized_V = False
-    elif all_args.algorithm_name == "gcmnet_dna_gatv2_mappo":
-        print("u are choosing to use gcmnet_dna_gatv2_mappo, we set use_centralized_V to be False")
-        all_args.use_centralized_V = False
-    elif all_args.algorithm_name == "gcmnet_gin_mappo":
-        print("u are choosing to use gcmnet_gin_mappo, we set use_centralized_V to be False")
-        all_args.use_centralized_V = False
     else:
-        raise NotImplementedErrornet
+        raise NotImplementedError
 
     # cuda
     if all_args.cuda and torch.cuda.is_available():
@@ -210,10 +194,8 @@ def main(args):
     }
 
     # run experiments
-    if all_args.algorithm_name == "gcmnet_dna_gatv2_mappo" or all_args.algorithm_name == "gcmnet_gin_mappo":
-        from onpolicy.runner.shared.gcmnet_gym_dragon_runner import GCMNetGymDragonRunner as Runner
-    elif all_args.share_policy:
-        from onpolicy.runner.shared.gym_dragon_runner import GymDragonRunner as Runner
+    if all_args.algorithm_name == "mudmaf_mappo":
+        from onpolicy.runner.shared.mudmaf_multi_drone_gym_runner as Runner
     else:
         raise NotImplementedError
 

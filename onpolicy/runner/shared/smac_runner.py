@@ -1,8 +1,9 @@
-import time
-import wandb
 import numpy as np
-from functools import reduce
+import time
 import torch
+import wandb
+
+from functools import reduce
 from onpolicy.runner.shared.base_runner import Runner
 
 def _t2n(x):
@@ -27,10 +28,10 @@ class SMACRunner(Runner):
                 self.trainer.policy.lr_decay(episode, episodes)
 
             for step in range(self.episode_length):
-                # Sample actions
+                # sample actions
                 values, actions, action_log_probs, rnn_states, rnn_states_critic = self.collect(step)
                     
-                # Obser reward and next obs
+                # observe reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, \
@@ -76,7 +77,8 @@ class SMACRunner(Runner):
                             battles_game.append(info[0]['battles_game'])
                             incre_battles_game.append(info[0]['battles_game']-last_battles_game[i])
 
-                    incre_win_rate = np.sum(incre_battles_won)/np.sum(incre_battles_game) if np.sum(incre_battles_game)>0 else 0.0
+                    incre_win_rate = np.sum(incre_battles_won) / np.sum(incre_battles_game) \
+                        if np.sum(incre_battles_game) > 0 else 0.0
                     print("incre win rate is {}.".format(incre_win_rate))
                     if self.use_wandb:
                         wandb.log({"incre_win_rate": incre_win_rate}, step=total_num_steps)
@@ -86,7 +88,8 @@ class SMACRunner(Runner):
                     last_battles_game = battles_game
                     last_battles_won = battles_won
 
-                train_infos['dead_ratio'] = 1 - self.buffer.active_masks.sum() / reduce(lambda x, y: x*y, list(self.buffer.active_masks.shape)) 
+                train_infos['dead_ratio'] = 1 - \
+                    self.buffer.active_masks.sum() / reduce(lambda x, y: x*y, list(self.buffer.active_masks.shape)) 
                 
                 self.log_train(train_infos, total_num_steps)
 
@@ -132,8 +135,10 @@ class SMACRunner(Runner):
 
         dones_env = np.all(dones, axis=1)
 
-        rnn_states[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
-        rnn_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
+        rnn_states[dones_env == True] = \
+            np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+        rnn_states_critic[dones_env == True] = \
+            np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
 
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
@@ -142,13 +147,14 @@ class SMACRunner(Runner):
         active_masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
         active_masks[dones_env == True] = np.ones(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 
-        bad_masks = np.array([[[0.0] if info[agent_id]['bad_transition'] else [1.0] for agent_id in range(self.num_agents)] for info in infos])
+        bad_masks = np.array([[[0.0] if info[agent_id]['bad_transition'] else [1.0] \
+                               for agent_id in range(self.num_agents)] for info in infos])
         
         if not self.use_centralized_V:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic,
-                           actions, action_log_probs, values, rewards, masks, bad_masks, active_masks, available_actions)
+        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, 
+                           masks, bad_masks, active_masks, available_actions)
 
     def log_train(self, train_infos, total_num_steps):
         train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)
@@ -168,7 +174,8 @@ class SMACRunner(Runner):
 
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+        eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), 
+                                   dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
@@ -183,15 +190,19 @@ class SMACRunner(Runner):
             eval_rnn_states = np.array(np.split(_t2n(eval_rnn_states), self.n_eval_rollout_threads))
             
             # Obser reward and next obs
-            eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(eval_actions)
+            eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = \
+                self.eval_envs.step(eval_actions)
             one_episode_rewards.append(eval_rewards)
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
-            eval_rnn_states[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+            eval_rnn_states[eval_dones_env == True] = \
+                np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), 
+                         dtype=np.float32)
 
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
-            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
+            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), 
+                                                          dtype=np.float32)
 
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:

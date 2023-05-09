@@ -13,7 +13,7 @@ class GCMNetDNAGATv2Actor(nn.Module):
     """
     GCMNetDNAGATv2 Actor network class for MAPPO. Outputs actions given observations.
     :param args: (argparse.Namespace) arguments containing relevant model information.
-    :param obs_space: (gym.Space) observation space.
+    :param obs_space: (gym.Space) observation space.    
     :param action_space: (gym.Space) action space.
     :param device: (torch.device) specifies the device to run on (cpu/gpu).
     """
@@ -166,7 +166,7 @@ class GCMNetDNAGATv2Actor(nn.Module):
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
             # [shape: (batch_size, num_agents, obs_dims)]  
-            obs = check(obs).to(**self.tpdv)  
+            obs = check(obs).to(**self.tpdv)
             batch_size = obs.shape[0]
             if self.rni:
                 # zero mean std 1 gaussian noise 
@@ -747,7 +747,7 @@ class GCMNetDNAGATv2Critic(nn.Module):
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
             # [shape: (batch_size, num_agents, obs_dims)]  
-            obs = check(cent_obs).to(**self.tpdv)  
+            obs = check(cent_obs).to(**self.tpdv)
             batch_size = obs.shape[0]
             if self.rni:
                 # zero mean std 1 gaussian noise 

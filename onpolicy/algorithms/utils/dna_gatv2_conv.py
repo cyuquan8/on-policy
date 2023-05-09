@@ -45,9 +45,9 @@ class AttLinear(torch.nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-
-        """ function to reset model weights """
-
+        """ 
+        function to reset model weights 
+        """         
         kaiming_uniform(self.weight, fan=self.weight.size(1), a=math.sqrt(5))
         uniform(self.weight.size(1), self.bias)
 
@@ -72,7 +72,7 @@ class AttLinear(torch.nn.Module):
             # transpose src to (*, groups, out_channels // groups)
             out = out.transpose(1, 0).contiguous()
             # resize out to size (*, out_channels)
-            out = out.view(size + (self.out_channels, ))
+            out = out.view(size + (self.out_channels, ))    
         # no grouping
         else:
             # out with size (*, out_channels) 
@@ -194,7 +194,7 @@ class MultiHead(Attention):
         """ 
         function to reset parameters
         """
-        # reset paramters
+        # reset parameters
         self.lin_q.reset_parameters()
         self.lin_k.reset_parameters()
         self.lin_v.reset_parameters()
@@ -250,7 +250,8 @@ class MultiHead(Attention):
         """ 
         function for representation 
         """
-        return (f'{self.__class__.__name__}({self.in_channels}, 'f'{self.out_channels}, heads = {self.heads}, 'f'groups = {self.groups}, dropout = {self.droput}, 'f'bias = {self.bias})')
+        return (f'{self.__class__.__name__}({self.in_channels}, 'f'{self.out_channels}, heads = {self.heads}, '
+                f'groups = {self.groups}, dropout = {self.droput}, 'f'bias = {self.bias})')
 
 class DNAGATv2Conv(MessagePassing):
     """ 
@@ -259,8 +260,21 @@ class DNAGATv2Conv(MessagePassing):
     # typing 
     _alpha: OptTensor
 
-    def __init__(self, in_channels: int, out_channels: int, att_heads: int=1, mul_att_heads: int=1, groups: int=1, concat: bool=True, negative_slope: float=0.2, dropout: float=0.0, 
-                 add_self_loops: bool=True, edge_dim: Optional[int]=None, fill_value: Union[float, Tensor, str]='mean', bias: bool=True, **kwargs):
+    def __init__(self, 
+                 in_channels: int, 
+                 out_channels: int, 
+                 att_heads: int=1, 
+                 mul_att_heads: int=1, 
+                 groups: int=1, 
+                 concat: bool=True, 
+                 negative_slope: float=0.2, 
+                 dropout: float=0.0, 
+                 add_self_loops: bool=True, 
+                 edge_dim: Optional[int]=None, 
+                 fill_value: Union[float, Tensor, str]='mean', 
+                 bias: bool=True, 
+                 **kwargs
+        ):
         """
         class constructor to set attributes
         """
@@ -268,9 +282,9 @@ class DNAGATv2Conv(MessagePassing):
         kwargs.setdefault('aggr', 'add')
 
         # call init from MessagePassing
-        super().__init__(node_dim = 0, **kwargs)
+        super().__init__(node_dim=0, **kwargs)
 
-        # g2a attributes
+        # gatv2 attributes
 
         # input channels for first attention based propagation
         self.in_channels = in_channels
@@ -324,7 +338,12 @@ class DNAGATv2Conv(MessagePassing):
         self._alpha = None
 
         # multi attention head
-        self.multi_head = MultiHead(out_channels * att_heads if concat else out_channels, out_channels * att_heads if concat else out_channels, mul_att_heads, groups, dropout, bias)
+        self.multi_head = MultiHead(out_channels * att_heads if concat else out_channels, 
+                                    out_channels * att_heads if concat else out_channels, 
+                                    mul_att_heads, 
+                                    groups, 
+                                    dropout, 
+                                    bias)
 
         # reset parameters 
         self.reset_parameters()
@@ -352,16 +371,9 @@ class DNAGATv2Conv(MessagePassing):
         """ 
         function to conduct forward propagation 
         """
-
         # check if the dimensions of the input are of shape [num_nodes, num_layers, channels]
         if x.dim() != 3:
             raise ValueError('Feature shape must be [num_nodes, num_layers, channels].')
-
-        # obtain current node embedding: [num_nodes, num_layers, channels] --> [num_nodes, channels]
-        x_curr = x[:, -1]
-        # pass current node embedding to lin layer 
-        x_curr = self.lin(x_curr).view(-1, self.att_heads, self.out_channels)
-
         # check to add self_loops to edge indexes
         if self.add_self_loops:
             # obtain number of nodes
@@ -369,51 +381,70 @@ class DNAGATv2Conv(MessagePassing):
             # remove all self loops and their attributes
             edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
             # add self loops and correspoding edge attributes of self loops
-            edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value=self.fill_value, num_nodes=num_nodes)
+            edge_index, edge_attr = add_self_loops(edge_index, 
+                                                   edge_attr, 
+                                                   fill_value=self.fill_value, 
+                                                   num_nodes=num_nodes)
         
         # set first pass boolean
         self.first_prop = True
-        # first propagate based on gatv2 on current node embeddings: [num_nodes, num_heads, channels]
-        out = self.propagate(edge_index, x = None, x_layer=x_curr, edge_attr=edge_attr, size=None)
+        # first propagate based on dna
+        # x [shape: num_nodes, num_layers, in_channels] --> out [shape: num_nodes, in_channels]
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=None)
         # set first pass boolean
         self.first_prop = False
-        
+    
+        # pass current node embedding to lin layer 
+        # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
+        out = self.lin(out).view(-1, self.att_heads, self.out_channels) 
+        # second propagate based on gatv2 [shape: num_nodes, att_heads, out_channels] 
+        out = self.propagate(edge_index, x=out, edge_attr=edge_attr, size=None)
+    
         # update alpha to be returned if required
         alpha = self._alpha
+        assert alpha is not None
         self._alpha = None
 
         # check if outputs are concatenated
         if self.concat:
-            # concatenate outputs: [num_nodes, num_heads, channels]
+            # concatenate outputs [shape: num_nodes, att_heads * out_channels] 
             out = out.view(-1, self.att_heads * self.out_channels)
         # mean
         else:
-            # obtain mean across heads: [num_nodes, channels]
+            # obtain mean across heads [shape: num_nodes, out_channels] 
             out = out.mean(dim=1)
-
-        # add bias if its exist
+        # add bias if it exist
         if self.bias is not None:
             out += self.bias
-        
-        # second propagate based on dna on all layers of node beddings and output of first propagation from gatv2
-        out = self.propagate(edge_index, x=x, x_layer=out, edge_attr=edge_attr, size=None)
 
         # check if there is need to return attention weights
-        if isinstance(return_attention_weights, bool):
-            # ensure that the attention weights exist
-            assert alpha is not None
-
+        if return_attention_weights:
             return out, (edge_index, alpha)
         else:
             return out
 
-    def message(self, x_j: Tensor, x_i: Tensor, x_layer_j: Tensor, x_layer_i: Tensor, edge_attr: OptTensor, index: Tensor, ptr: OptTensor, size_i: Optional[int]) -> Tensor:
-
-        # check if its the first propagation
+    def message(self, 
+                x_i: Tensor,
+                x_j: Tensor, 
+                edge_attr: OptTensor, 
+                index: Tensor, 
+                ptr: OptTensor, 
+                size_i: Optional[int]
+        ) -> Tensor:
+        # first propagation (dna)
         if self.first_prop == True:
-            # concatenate source and target embeddings
-            x_curr = x_layer_i + x_layer_j
-            
+            # [shape: num_edges, num_layers, in_channels] --> [shape: num_edges, 1, in_channels]
+            x_i = x_i[:, -1:, :]
+            # apply multi-head attention
+            # x_i [shape: num_edges, 1, in_channels], x_j [shape: num_edges, num_layers, in_channels] -->  
+            # [shape: num_edges, in_channels]
+            return self.multi_head(x_i, x_j, x_j).squeeze(1)
+        # not first propagation (gatv2)
+        else:
+            # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
+            # [shape: num_edges, att_heads, out_channels]
+            x = x_i + x_j
+           
             # check if there are edge attributes
             if edge_attr is not None:
                 # check dimensions of edge dimensions
@@ -423,30 +454,34 @@ class DNAGATv2Conv(MessagePassing):
                 # ensure that there is linear layer for edges
                 assert self.lin_edge is not None
                 # pass edge attributes to lin_edge
+                # [shape: num_edges, edge_dims] --> [shape: num_edges, att_heads * out_channels]
                 edge_attr = self.lin_edge(edge_attr)
-                # change shape from [num_edges, num_heads * out_channels] --> [num_edges, num_heads, out_channels]
-                edge_attr = edge_attr.view(-1, self.heads, self.out_channels)
-                # concatenate to node embeddings
-                x_curr += edge_attr
+                # [shape: num_edges, att_heads * out_channels] --> [num_edges, att_heads, out_channels]
+                edge_attr = edge_attr.view(-1, self.att_heads, self.out_channels)
+                # 'emulate' concatentation to node embeddings
+                # [shape: num_edges, att_heads, out_channels]
+                x += edge_attr
     
             # pass node embeddings through leaky relu
-            x_curr = F.leaky_relu(x_curr, self.negative_slope)
-            # multiply by node independent parameter layer. sum over out_channels with shape [num_edges, num_heads]
-            alpha = (x_curr * self.att).sum(dim = -1)
-            # calculate softmaxed attention weights with shape [num_edges, num_heads]
+            x = F.leaky_relu(x, self.negative_slope)
+            # multiply by node independent parameter layer. sum over out_channels.
+            # x [shape: num_edges, att_heads, out_channels], self.att [shape: 1, att_heads, out_channels] --> 
+            # alpha [shape: num_edges, att_heads]
+            alpha = (x * self.att).sum(dim = -1)
+            # calculate softmaxed attention weights
+            # [shape: num_edges, att_heads]
             alpha = softmax(alpha, index, ptr, size_i)
             # store attention weights
             self._alpha = alpha
             # apply dropout to attention weights
             alpha = F.dropout(alpha, p=self.dropout, training=self.training)
             
-            # apply attention weights to target nodes: [num_edges, num_heads, out_channels] * [num_edges, num_heads, 1] --> [num_edges, num_heads, out_channels]
-            return x_layer_j * alpha.unsqueeze(-1)
-        # second propagation
-        else:
-            # add layer dimensions to output of first propagation to, send it to multi head attention and remove layer dimension
-            return self.multi_head(x_layer_i.unsqueeze(1), x_j, x_j).squeeze(1) 
+            # apply attention weights to target nodes
+            # [shape: num_edges, att_heads, out_channels] * [shape: num_edges, att_heads, 1] -->
+            # [shape: num_edges, att_heads, out_channels]
+            return x_j * alpha.unsqueeze(-1)
 
     def __repr__(self) -> str:
 
-        return (f'{self.__class__.__name__}({self.in_channels}, 'f'{self.out_channels}, att_heads = {self.att_heads}), 'f'mult_att_heads={self.multi_head.heads}, 'f'groups={self.multi_head.groups})')
+        return (f'{self.__class__.__name__}({self.in_channels}, 'f'{self.out_channels}, att_heads = {self.att_heads}), '
+                f'mult_att_heads={self.multi_head.heads}, 'f'groups={self.multi_head.groups})')

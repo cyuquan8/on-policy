@@ -108,9 +108,8 @@ class GCMNetDNAGATv2Actor(nn.Module):
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
                                                  else (self.n_gnn_layers + 1) * self.obs_dims + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_n_layers * \
-                                                 self.somu_lstm_hidden_size + (2 * self.scmu_n_layers + 1) * \
-                                                 self.scmu_n_layers * self.scmu_lstm_hidden_size, 
+                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
+                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size 
                                   block=MLPBlock, 
                                   output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                   activation_func='relu', 
@@ -687,9 +686,8 @@ class GCMNetDNAGATv2Critic(nn.Module):
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
                                                  else (self.n_gnn_layers + 1) * self.obs_dims + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_n_layers * \
-                                                 self.somu_lstm_hidden_size + (2 * self.scmu_n_layers + 1) * \
-                                                 self.scmu_n_layers * self.scmu_lstm_hidden_size, 
+                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
+                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size 
                                   block=MLPBlock, 
                                   output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                   activation_func='relu', 
@@ -1244,9 +1242,8 @@ class GCMNetGINActor(nn.Module):
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
                                                  else (self.n_gnn_layers + 1) * self.obs_dims + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_n_layers * \
-                                                 self.somu_lstm_hidden_size + (2 * self.scmu_n_layers + 1) * \
-                                                 self.scmu_n_layers * self.scmu_lstm_hidden_size, 
+                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
+                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size 
                                   block=MLPBlock, 
                                   output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                   activation_func='relu', 
@@ -1824,9 +1821,8 @@ class GCMNetGINCritic(nn.Module):
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
                                                  else (self.n_gnn_layers + 1) * self.obs_dims + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_n_layers * \
-                                                 self.somu_lstm_hidden_size + (2 * self.scmu_n_layers + 1) * \
-                                                 self.scmu_n_layers * self.scmu_lstm_hidden_size, 
+                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
+                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size 
                                   block=MLPBlock, 
                                   output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
                                   activation_func='relu', 

@@ -94,11 +94,12 @@ def restricted_softmax(src, dim: int=-1, margin: float=0.):
     """ 
     function to calculate restricted softmax 
     """
-    # find maximum positive exponent from src
+    # find maximum positive exponent from key entries of src [*, query_entries, 1]
     src_max = torch.clamp(src.max(dim=dim, keepdim=True)[0], min=0.)
-    # divide by e^(src_max)
+    # divide by e^(src_max) [*, query_entries, key_entries]
     out = (src - src_max).exp()
     # essentially e^{src_i} / (1 + sum_j(e^(src_j))) 
+    # softmax over key entries [*, query_entries, key_entries]
     out = out / (out.sum(dim=dim, keepdim=True) + (margin - src_max).exp())
 
     return out
@@ -108,7 +109,7 @@ class Attention(torch.nn.Module):
     class for attention block 
     """
 
-    def __init__(self, dropout = 0):
+    def __init__(self, dropout=0):
         """ 
         class constructor to set attributes 
         """ 
@@ -141,15 +142,16 @@ class Attention(torch.nn.Module):
 
         # Score: [*, query_entries, key_entries]
 
-        # matmul query and key
+        # matmul query and key [*, query_entries, key_entries]
         score = torch.matmul(query, key.transpose(-2, -1))
-        # scale score by dimension of key
+        # scale score by dimension of key [*, query_entries, key_entries]
         score = score / math.sqrt(key.size(-1))
-        # restricted softmax
+        # restricted softmax [*, query_entries, key_entries]
         score = restricted_softmax(score, dim=-1)
-        # apply dropout
+        # apply dropout [*, query_entries, key_entries]
         score = F.dropout(score, p=self.dropout, training=self.training)
 
+        # [*, query_entries, dim_v]
         return torch.matmul(score, value)
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -260,20 +262,22 @@ class DNAGATv2Conv(MessagePassing):
     # typing 
     _alpha: OptTensor
 
-    def __init__(self, 
-                 in_channels: int, 
-                 out_channels: int, 
-                 att_heads: int=1, 
-                 mul_att_heads: int=1, 
-                 groups: int=1, 
-                 concat: bool=True, 
-                 negative_slope: float=0.2, 
-                 dropout: float=0.0, 
-                 add_self_loops: bool=True, 
-                 edge_dim: Optional[int]=None, 
-                 fill_value: Union[float, Tensor, str]='mean', 
-                 bias: bool=True, 
-                 **kwargs
+    def __init__(
+            self, 
+            in_channels: int, 
+            out_channels: int, 
+            att_heads: int=1, 
+            mul_att_heads: int=1, 
+            groups: int=1, 
+            concat: bool=True, 
+            negative_slope: float=0.2, 
+            dropout: float=0.0, 
+            add_self_loops: bool=True, 
+            edge_dim: Optional[int]=None, 
+            fill_value: Union[float, Tensor, str]='mean', 
+            bias: bool=True,
+            cpa_model: str='none', 
+            **kwargs
         ):
         """
         class constructor to set attributes
@@ -304,6 +308,8 @@ class DNAGATv2Conv(MessagePassing):
         self.edge_dim = edge_dim
         # fill value for edge attributes for self loops
         self.fill_value = fill_value
+        # cardinality preserved attention model
+        self.cpa_model = cpa_model
 
         # dna variables
         self.mul_att_heads = mul_att_heads
@@ -442,6 +448,7 @@ class DNAGATv2Conv(MessagePassing):
         # not first propagation (gatv2)
         else:
             # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
+            # assumes same att vector is applied to source, target and edge embeddings (slightly different from theory)
             # [shape: num_edges, att_heads, out_channels]
             x = x_i + x_j
            
@@ -479,7 +486,10 @@ class DNAGATv2Conv(MessagePassing):
             # apply attention weights to target nodes
             # [shape: num_edges, att_heads, out_channels] * [shape: num_edges, att_heads, 1] -->
             # [shape: num_edges, att_heads, out_channels]
-            return x_j * alpha.unsqueeze(-1)
+            if self.cpa_model == 'none':
+                return x_j * alpha.unsqueeze(-1)
+            elif self.cpa_model == 'f_additive':
+                return x_j * (alpha.unsqueeze(-1) + 1)
 
     def __repr__(self) -> str:
 

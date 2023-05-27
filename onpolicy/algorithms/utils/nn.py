@@ -193,8 +193,22 @@ class DNAGATv2Block(nn.Module):
     class to build DNAGATv2Block 
     """
 
-    def __init__(self, input_channels, output_channels, att_heads=1, mul_att_heads=1, groups=1, concat=True, 
-                 negative_slope=0.2, dropout=0.0, add_self_loops=True, edge_dim=None, fill_value='mean', bias=True):
+    def __init__(
+            self, 
+            input_channels, 
+            output_channels, 
+            att_heads=1, 
+            mul_att_heads=1, 
+            groups=1, 
+            concat=True, 
+            negative_slope=0.2, 
+            dropout=0.0, 
+            add_self_loops=True, 
+            edge_dim=None, 
+            fill_value='mean', 
+            bias=True,
+            cpa_model='none'
+        ):
         """ 
         class constructor for attributes of the DNAGATv2Block 
         """
@@ -224,7 +238,7 @@ class DNAGATv2Block(nn.Module):
         # boolean for bias
         self.bias = bias
 
-        # basic dgcn_block. input --> DNAGATv2Conv --> graph norm
+        # basic DNAGATv2Block. input --> DNAGATv2Conv --> graph norm
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # DNAGATv2Conv block 
@@ -232,7 +246,7 @@ class DNAGATv2Block(nn.Module):
                                                       att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, 
                                                       concat=concat, negative_slope=negative_slope, dropout=dropout, 
                                                       add_self_loops=add_self_loops, edge_dim=edge_dim, 
-                                                      fill_value=fill_value, bias=bias), 
+                                                      fill_value=fill_value, bias=bias, cpa_model=cpa_model), 
                                          'x, edge_index -> x'), 
                                         # graph norm
                                         (gnn.GraphNorm(self.output_channels * self.att_heads \

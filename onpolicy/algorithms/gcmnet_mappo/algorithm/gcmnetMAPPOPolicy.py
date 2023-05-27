@@ -1,11 +1,6 @@
 import torch
 
-from onpolicy.algorithms.gcmnet_mappo.algorithm.gcmnet_actor_critic import (
-    GCMNetDNAGATv2Actor,
-    GCMNetDNAGATv2Critic,
-    GCMNetGINActor,
-    GCMNetGINCritic
-)
+from onpolicy.algorithms.gcmnet_mappo.algorithm.gcmnet_actor_critic import GCMNetActor, GCMNetCritic
 from onpolicy.utils.util import update_linear_schedule
 
 
@@ -31,12 +26,8 @@ class GCMNet_MAPPOPolicy:
         self.share_obs_space = cent_obs_space
         self.act_space = act_space
 
-        if args.algorithm_name == "gcmnet_dna_gatv2_mappo":
-            self.actor = GCMNetDNAGATv2Actor(args, self.obs_space, self.act_space, self.device)
-            self.critic = GCMNetDNAGATv2Critic(args, self.share_obs_space, self.device)
-        elif args.algorithm_name == "gcmnet_gin_mappo":
-            self.actor = GCMNetGINActor(args, self.obs_space, self.act_space, self.device)
-            self.critic = GCMNetGINCritic(args, self.share_obs_space, self.device)
+        self.actor = GCMNetActor(args, self.obs_space, self.act_space, self.device)
+        self.critic = GCMNetCritic(args, self.share_obs_space, self.device)
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=self.lr, eps=self.opti_eps,

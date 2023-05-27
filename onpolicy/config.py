@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo", "ippo","gcmnet_dna_gatv2_mappo", "gcmnet_gin_mappo"]`
+            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcmnet_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -78,6 +78,8 @@ def get_config():
             Time length of chunks used to train a recurrent_policy, default 10.
 
     GCMNet parameters:
+        --gcmnet_gnn_architecture <str> 
+            Architecture for GNN layers in GCMNet, (default: "dna_gatv2")
         --gcmnet_n_gnn_layers <int>
             Number of GNN layers for GCMNet actor and critic network, (default: 3)
         --gcmnet_somu_n_layers <int>
@@ -106,6 +108,8 @@ def get_config():
             Ratio of randomly generated vector in RNI to original observation feature vector (default : 0.25)
         --gcmnet_n_gin_fc_layers <int>
             Number of MLP layers in GCMNet GINConv (default: 2)
+        --gcmnet_cpa_model <str>
+            Cardinality Preserved Attention (CPA) model for attention mechanism in GNN, (default: 'f_additive')
 
     MuDMAF parameters:
         --mudmaf_conv_output_dims <int>
@@ -208,7 +212,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo", "ippo","gcmnet_dna_gatv2_mappo", "gcmnet_gin_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo","gcmnet_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -262,6 +266,7 @@ def get_config():
                         help="The gain # of last action layer")
 
     # gcmnet network parameters
+    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin"], help="Architecture for GNN layers in GCMNet")
     parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCMNet actor and critic network")
     parser.add_argument("--gcmnet_somu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network")
     parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network")
@@ -276,6 +281,7 @@ def get_config():
     parser.add_argument("--gcmnet_rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
     parser.add_argument("--gcmnet_rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
     parser.add_argument("--gcmnet_n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet GINConv")
+    parser.add_argument("--gcmnet_cpa_model", type=str, default='f_additive', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for attention mechanism in GNN")
 
     # mudmaf network parameters
     parser.add_argument("--mudmaf_conv_output_dims", type=int, default=256, help="Output dimensions for convolutions in MuDMAF network")

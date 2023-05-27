@@ -118,12 +118,9 @@ def main(args):
     elif all_args.algorithm_name == "ippo":
         print("u are choosing to use ippo, we set use_centralized_V to be False")
         all_args.use_centralized_V = False
-    elif all_args.algorithm_name == "gcmnet_dna_gatv2_mappo":
-        print("u are choosing to use gcmnet_dna_gatv2_mappo, we set use_centralized_V to be False")
-        all_args.use_centralized_V = False
-    elif all_args.algorithm_name == "gcmnet_gin_mappo":
-        print("u are choosing to use gcmnet_gin_mappo, we set use_centralized_V to be False")
-        all_args.use_centralized_V = False
+    elif all_args.algorithm_name == "gcmnet_mappo":
+        print(f"u are choosing to use {all_args.algorithm_name} with gnn architecture {all_args.gcmnet_gnn_architecture}, we set use_centralized_V to be True")
+        all_args.use_centralized_V = True
     else:
         raise NotImplementedErrornet
 
@@ -210,7 +207,7 @@ def main(args):
     }
 
     # run experiments
-    if all_args.algorithm_name == "gcmnet_dna_gatv2_mappo" or all_args.algorithm_name == "gcmnet_gin_mappo":
+    if all_args.algorithm_name == "gcmnet_mappo":
         from onpolicy.runner.shared.gcmnet_gym_dragon_runner import GCMNetGymDragonRunner as Runner
     elif all_args.share_policy:
         from onpolicy.runner.shared.gym_dragon_runner import GymDragonRunner as Runner

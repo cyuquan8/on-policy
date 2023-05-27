@@ -75,8 +75,8 @@ def GymDragonEnv(args):
 
     if args.region == "all":
         env = DragonEnv(mission_length=args.episode_length,
-                        recon_phase_length=arg.recon_phase_length,
-                        seconds_per_timestep=arg.seconds_per_timestep,
+                        recon_phase_length=args.recon_phase_length,
+                        seconds_per_timestep=args.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
                         color_tools_only=args.color_tools_only,
@@ -85,8 +85,8 @@ def GymDragonEnv(args):
                         include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'desert':
         env = DesertEnv(mission_length=args.episode_length,
-                        recon_phase_length=arg.recon_phase_length,
-                        seconds_per_timestep=arg.seconds_per_timestep,
+                        recon_phase_length=args.recon_phase_length,
+                        seconds_per_timestep=args.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
                         color_tools_only=args.color_tools_only,
@@ -95,8 +95,8 @@ def GymDragonEnv(args):
                         include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'forest':
         env = ForestEnv(mission_length=args.episode_length,
-                        recon_phase_length=arg.recon_phase_length,
-                        seconds_per_timestep=arg.seconds_per_timestep,
+                        recon_phase_length=args.recon_phase_length,
+                        seconds_per_timestep=args.seconds_per_timestep,
                         obs_wrapper=obs_wrapper,
                         budget_weights=budget_weights,
                         color_tools_only=args.color_tools_only,
@@ -105,8 +105,8 @@ def GymDragonEnv(args):
                         include_chained_bombs=args.include_chained_bombs)
     elif args.region == 'village':
         env = VillageEnv(mission_length=args.episode_length,
-                         recon_phase_length=arg.recon_phase_length,
-                         seconds_per_timestep=arg.seconds_per_timestep,
+                         recon_phase_length=args.recon_phase_length,
+                         seconds_per_timestep=args.seconds_per_timestep,
                          obs_wrapper=obs_wrapper,
                          budget_weights=budget_weights,
                          color_tools_only=args.color_tools_only,

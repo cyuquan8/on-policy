@@ -16,6 +16,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
     def __init__(self, config):
         super(GCMNetGymDragonRunner, self).__init__(config)
         self.index_to_agent_id = {0: 'alpha', 1: 'bravo', 2: 'charlie'}
+        self.seed = None if config['all_args'].seed == 0 else config['all_args'].seed
 
     def run(self):
         self.warmup()
@@ -94,7 +95,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
 
     def warmup(self):
         # reset env
-        obs, available_actions= self.envs.reset()
+        obs, available_actions= self.envs.reset(self.seed)
 
         # replay buffer
         if self.use_centralized_V:
@@ -204,7 +205,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode_rewards = []
-        eval_obs, eval_available_actions = self.eval_envs.reset()
+        eval_obs, eval_available_actions = self.eval_envs.reset(self.seed)
 
         eval_somu_hidden_states_actor = \
             np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 

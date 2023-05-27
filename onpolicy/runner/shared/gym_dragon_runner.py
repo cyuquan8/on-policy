@@ -14,6 +14,7 @@ class GymDragonRunner(Runner):
     def __init__(self, config):
         super(GymDragonRunner, self).__init__(config)
         self.index_to_agent_id = {0: 'alpha', 1: 'bravo', 2: 'charlie'}
+        self.seed = None if config['all_args'].seed == 0 else config['all_args'].seed
 
     def run(self):
         self.warmup()   
@@ -90,7 +91,7 @@ class GymDragonRunner(Runner):
 
     def warmup(self):
         # reset env
-        obs, available_actions= self.envs.reset()
+        obs, available_actions= self.envs.reset(self.seed)
 
         # replay buffer
         if self.use_centralized_V:
@@ -154,7 +155,7 @@ class GymDragonRunner(Runner):
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode_rewards = []
-        eval_obs, eval_available_actions = self.eval_envs.reset()
+        eval_obs, eval_available_actions = self.eval_envs.reset(self.seed)
 
         eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), 
                                    dtype=np.float32)
@@ -218,7 +219,7 @@ class GymDragonRunner(Runner):
         
         all_frames = []
         for episode in range(self.all_args.render_episodes):
-            obs, available_actions = envs.reset()
+            obs, available_actions = envs.reset(self.seed)
             if self.all_args.save_gifs:
                 image = envs.render('rgb_array')[0][0]
                 all_frames.append(image)

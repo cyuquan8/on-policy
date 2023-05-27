@@ -23,7 +23,7 @@ def make_train_env(all_args):
                 print("Can not support the " +
                       all_args.env_name + "environment.")
                 raise NotImplementedError
-            env.seed(all_args.seed + rank * 1000)
+            # env.seed(all_args.seed + rank * 1000)
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
@@ -41,7 +41,7 @@ def make_eval_env(all_args):
                 print("Can not support the " +
                       all_args.env_name + "environment.")
                 raise NotImplementedError
-            env.seed(all_args.seed * 50000 + rank * 10000)
+            # env.seed(all_args.seed * 50000 + rank * 10000)
             return env
         return init_env
     if all_args.n_eval_rollout_threads == 1:

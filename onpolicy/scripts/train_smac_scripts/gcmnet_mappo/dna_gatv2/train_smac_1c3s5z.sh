@@ -17,7 +17,7 @@ clip_param=0.2
 gcmnet_gnn_architecture="dna_gatv2"
 gcmnet_gnn_output_dims=64
 gcmnet_gnn_att_heads=4
-gcmnet_gnn_dna_gatv2_multi_att_heads=4
+gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=4
 gcmnet_n_gin_fc_layers=2
@@ -33,7 +33,7 @@ gcmnet_k=1
 gcmnet_rni_ratio=0.2
 
 eval_episodes=32
-exp="gnn_arch_${gcmnet_gnn_architecture}_gnn_att_heads_${gcmnet_gnn_att_heads}_gnn_multi_att_heads_${gcmnet_gnn_dna_gatv2_multi_att_heads}_cpa_model_${gcmnet_cpa_model}_n_gnn_layers_${gcmnet_n_gnn_layers}"
+exp="gnn_arch_${gcmnet_gnn_architecture}_gnn_att_heads_${gcmnet_gnn_att_heads}_cpa_model_${gcmnet_cpa_model}_n_gnn_layers_${gcmnet_n_gnn_layers}"
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 for seed in `seq ${seed_max}`;

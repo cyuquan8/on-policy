@@ -266,38 +266,38 @@ class DNAGATv2Conv(MessagePassing):
             self, 
             in_channels: int, 
             out_channels: int, 
-            att_heads: int=1, 
-            mul_att_heads: int=1, 
-            groups: int=1, 
-            concat: bool=True, 
-            negative_slope: float=0.2, 
+            att_heads: int = 1, 
+            mul_att_heads: int = 1, 
+            groups: int = 1, 
+            negative_slope: float = 0.2, 
             dropout: float=0.0, 
-            add_self_loops: bool=True, 
-            edge_dim: Optional[int]=None, 
-            fill_value: Union[float, Tensor, str]='mean', 
-            bias: bool=True,
-            cpa_model: str='none', 
+            add_self_loops: bool = True, 
+            edge_dim: Optional[int] = None, 
+            fill_value: Union[float, Tensor, str] = 'mean', 
+            bias: bool = True,
+            gnn_cpa_model: str = 'none', 
             **kwargs
         ):
         """
         class constructor to set attributes
         """
+        # channels assertion for DNA
+        assert in_channels == out_channels, f"in_channels of {in_channels} size is not equal to out_channels of " + \
+                                            f"{out_channels} size. Both channels need to equal in size for DNA " + \
+                                            "Multi-Head Attention"
         # set default aggregation method for MesssagePassing
         kwargs.setdefault('aggr', 'add')
-
         # call init from MessagePassing
         super().__init__(node_dim=0, **kwargs)
 
         # gatv2 attributes
 
-        # input channels for first attention based propagation
+        # input channels for GATv2 based propagation
         self.in_channels = in_channels
-        # output channels after first attention based propagation
+        # output channels after GATv2 based propagation
         self.out_channels = out_channels
-        # number of heads for first attention based propagation
+        # number of heads for GATv2 based propagation
         self.att_heads = att_heads
-        # boolean to track to concatenate output after first attention based propagation. mean is used if false
-        self.concat = concat
         # negative slope for leaky relu
         self.negative_slope = negative_slope
         # probability of dropout
@@ -309,7 +309,7 @@ class DNAGATv2Conv(MessagePassing):
         # fill value for edge attributes for self loops
         self.fill_value = fill_value
         # cardinality preserved attention model
-        self.cpa_model = cpa_model
+        self.gnn_cpa_model = gnn_cpa_model
 
         # dna variables
         self.mul_att_heads = mul_att_heads
@@ -329,12 +329,8 @@ class DNAGATv2Conv(MessagePassing):
         else:
             self.lin_edge = None
 
-        # check if there is bias and output concatenation
-        if bias and concat:
-            # parameter layer for bias
-            self.bias = Parameter(torch.Tensor(att_heads * out_channels))
-        # check if there is bias and not output concatenation
-        elif bias and not concat:
+        # check if there is bias
+        if bias:
             # parameter layer for bias
             self.bias = Parameter(torch.Tensor(out_channels))
         else:
@@ -344,8 +340,8 @@ class DNAGATv2Conv(MessagePassing):
         self._alpha = None
 
         # multi attention head
-        self.multi_head = MultiHead(out_channels * att_heads if concat else out_channels, 
-                                    out_channels * att_heads if concat else out_channels, 
+        self.multi_head = MultiHead(out_channels, 
+                                    out_channels, 
                                     mul_att_heads, 
                                     groups, 
                                     dropout, 
@@ -411,14 +407,8 @@ class DNAGATv2Conv(MessagePassing):
         assert alpha is not None
         self._alpha = None
 
-        # check if outputs are concatenated
-        if self.concat:
-            # concatenate outputs [shape: num_nodes, att_heads * out_channels] 
-            out = out.view(-1, self.att_heads * self.out_channels)
-        # mean
-        else:
-            # obtain mean across heads [shape: num_nodes, out_channels] 
-            out = out.mean(dim=1)
+        # obtain mean across heads [shape: num_nodes, out_channels] 
+        out = out.mean(dim=1)
         # add bias if it exist
         if self.bias is not None:
             out += self.bias
@@ -486,9 +476,9 @@ class DNAGATv2Conv(MessagePassing):
             # apply attention weights to target nodes
             # [shape: num_edges, att_heads, out_channels] * [shape: num_edges, att_heads, 1] -->
             # [shape: num_edges, att_heads, out_channels]
-            if self.cpa_model == 'none':
+            if self.gnn_cpa_model == 'none':
                 return x_j * alpha.unsqueeze(-1)
-            elif self.cpa_model == 'f_additive':
+            elif self.gnn_cpa_model == 'f_additive':
                 return x_j * (alpha.unsqueeze(-1) + 1)
 
     def __repr__(self) -> str:

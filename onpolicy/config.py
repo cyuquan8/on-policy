@@ -80,22 +80,34 @@ def get_config():
     GCMNet parameters:
         --gcmnet_gnn_architecture <str> 
             Architecture for GNN layers in GCMNet, (default: "dna_gatv2")
+        --gcmnet_gnn_output_dims
+            Hidden Size for GNN layers for actor and critic network, (default: 64)
+        --gcmnet_gnn_att_heads <int>
+            Number of attention heads for GNN architecture with suitable attention mechanism, (default: 1)
+        --gcmnet_gnn_dna_gatv2_multi_att_heads <int>
+            Number of attention heads for DNAGATv2 Multi-Head Attention for DNA, (default: 1)
+        --gcmnet_gnn_att_concat
+            Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism, (default: False)
+        --gcmnet_cpa_model <str>
+            Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism, (default: 'f_additive')
         --gcmnet_n_gnn_layers <int>
-            Number of GNN layers for GCMNet actor and critic network, (default: 3)
+            Number of GNN layers for GCMNet actor and critic network, (default: 2)
+        --gcmnet_n_gin_fc_layers <int>
+            Number of MLP layers in GCMNet GINConv (default: 2)
         --gcmnet_somu_n_layers <int>
-            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network, (default: 3)
+            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network, (default: 2)
         --gcmnet_somu_lstm_hidden_size <int>
             Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network, (default: 128)
         --gcmnet_somu_multi_att_n_heads <int>
             Number of Heads for Multi-Attention for SOMU outputs in GCMNet actor network, (default: 2)
         --gcmnet_scmu_n_layers <int>
-            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network, (default: 3)
+            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network, (default: 2)
         --gcmnet_scmu_lstm_hidden_size <int>
             Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet actor network, (default: 128)
         --gcmnet_scmu_multi_att_n_heads <int>
             Number of Heads for Multi-Attention for SCMU outputs in GCMNet actor network, (default: 2)
         --gcmnet_fc_output_dims <int>
-            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 128)
+            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 512)
         --gcmnet_n_fc_layers <int>
             Number of MLP layers in GCMNet actor and critic network, (default: 3)
         --gcmnet_knn
@@ -103,13 +115,9 @@ def get_config():
         --gcmnet_k <int>
             Number of Neighbours for K-Nearest Neighbour (default: 1)
         --gcmnet_rni
-            Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN (default : False)
+            Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN (default: False)
         --gcmnet_rni_ratio <float>
-            Ratio of randomly generated vector in RNI to original observation feature vector (default : 0.25)
-        --gcmnet_n_gin_fc_layers <int>
-            Number of MLP layers in GCMNet GINConv (default: 2)
-        --gcmnet_cpa_model <str>
-            Cardinality Preserved Attention (CPA) model for attention mechanism in GNN, (default: 'f_additive')
+            Ratio of randomly generated vector in RNI to original observation feature vector (default: 0.25)
 
     MuDMAF parameters:
         --mudmaf_conv_output_dims <int>
@@ -266,22 +274,26 @@ def get_config():
                         help="The gain # of last action layer")
 
     # gcmnet network parameters
-    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin"], help="Architecture for GNN layers in GCMNet")
-    parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=3, help="Number of GNN layers for GCMNet actor and critic network")
-    parser.add_argument("--gcmnet_somu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network")
+    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin", "gatv2"], help="Architecture for GNN layers in GCMNet")
+    parser.add_argument("--gcmnet_gnn_output_dims", type=int, default=64, help="Hidden Size for GNN layers for actor and critic network")
+    parser.add_argument("--gcmnet_gnn_att_heads", type=int, default=1, help="Number of attention heads for GNN architecture with suitable attention mechanism")
+    parser.add_argument("--gcmnet_gnn_dna_gatv2_multi_att_heads", type=int, default=1, help="Number of attention heads for DNAGATv2 Multi-Head Attention for DNA")
+    parser.add_argument("--gcmnet_gnn_att_concat", action='store_true', default=False, help="Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism")
+    parser.add_argument("--gcmnet_gnn_cpa_model", type=str, default='f_additive', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism")
+    parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=2, help="Number of GNN layers for GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet GINConv")
+    parser.add_argument("--gcmnet_somu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network")
     parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network")
-    parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SOMU outputs in GCMNet actor network")
-    parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=3, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network")
+    parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SOMU outputs in GCMNet actor network")
+    parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network")
     parser.add_argument("--gcmnet_scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet actor network")
-    parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Attention for SCMU outputs in GCMNet actor network")
-    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SCMU outputs in GCMNet actor network")
+    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=512, help="Hidden Size for MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_n_fc_layers", type=int, default=3, help="Number of MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
     parser.add_argument("--gcmnet_k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
     parser.add_argument("--gcmnet_rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
     parser.add_argument("--gcmnet_rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
-    parser.add_argument("--gcmnet_n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet GINConv")
-    parser.add_argument("--gcmnet_cpa_model", type=str, default='f_additive', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for attention mechanism in GNN")
 
     # mudmaf network parameters
     parser.add_argument("--mudmaf_conv_output_dims", type=int, default=256, help="Output dimensions for convolutions in MuDMAF network")

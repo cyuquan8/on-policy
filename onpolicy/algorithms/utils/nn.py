@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch_geometric.nn as gnn
 
 from onpolicy.algorithms.utils.dna_gatv2_conv import DNAGATv2Conv
+from onpolicy.algorithms.utils.gatv2_conv import GATv2Conv
 
 def activation_function(activation):
     """
@@ -100,7 +101,8 @@ class MLPBlock(nn.Module):
     """
     class to build basic fully connected block 
     """
-    
+    block_type = "MLPBlock"
+
     def __init__(self, input_shape, output_shape, activation_func="relu", weight_initialisation="default", *args, 
         **kwargs):
         """
@@ -138,14 +140,14 @@ class MLPBlock(nn.Module):
         function for forward pass of MLPBlock 
         """
         x = self.block(x)
-        
         return x
 
 class VGGBlock(nn.Module):
     """ 
     class to build basic, vgg inspired block 
-    """
-    
+    """ 
+    block_type = "VGGBlock"
+
     def __init__(self, input_channels, output_channels, activation_func, conv, dropout_p, max_pool_kernel):
         """ 
         class constructor that creates the layers attributes for VGGBlock 
@@ -185,13 +187,13 @@ class VGGBlock(nn.Module):
         function for forward pass of VGGBlock 
         """
         x = self.block(x)
-        
         return x
 
 class DNAGATv2Block(nn.Module):
     """ 
     class to build DNAGATv2Block 
     """
+    block_type = "DNAGATv2Block"
 
     def __init__(
             self, 
@@ -200,14 +202,13 @@ class DNAGATv2Block(nn.Module):
             att_heads=1, 
             mul_att_heads=1, 
             groups=1, 
-            concat=True, 
             negative_slope=0.2, 
             dropout=0.0, 
             add_self_loops=True, 
             edge_dim=None, 
             fill_value='mean', 
             bias=True,
-            cpa_model='none'
+            gnn_cpa_model='none'
         ):
         """ 
         class constructor for attributes of the DNAGATv2Block 
@@ -223,6 +224,76 @@ class DNAGATv2Block(nn.Module):
         self.mul_att_heads = mul_att_heads
         # number of groups for grouped operations multi head attention
         self.groups = groups
+        # negative slope of leaky relu
+        self.negative_slope = negative_slope
+        # dropout probablity
+        self.dropout = dropout
+        # boolean to add self loops
+        self.add_self_loops = add_self_loops
+        # dimensions of edge attributes if any
+        self.edge_dim = edge_dim
+        # fill value for edge attributes for self loops
+        self.fill_value = fill_value
+        # boolean for bias
+        self.bias = bias
+        # cardinality preserved attention (cpa) model
+        self.gnn_cpa_model = gnn_cpa_model
+
+        # basic DNAGATv2Block. input --> DNAGATv2Conv --> graph norm
+        self.block = gnn.Sequential('x, edge_index', 
+                                    [
+                                        # DNAGATv2Conv block 
+                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, 
+                                                      att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, 
+                                                      negative_slope=negative_slope, dropout=dropout, 
+                                                      add_self_loops=add_self_loops, edge_dim=edge_dim, 
+                                                      fill_value=fill_value, bias=bias, gnn_cpa_model=gnn_cpa_model), 
+                                         'x, edge_index -> x'), 
+                                        # graph norm
+                                        (gnn.GraphNorm(self.output_channels), 'x -> x')
+                                    ]
+        )  
+
+    def forward(self, x, edge_index, *args, **kwargs):
+        """ 
+        function for forward pass of DNAGATv2Block 
+        """
+        x = self.block(x, edge_index, *args, **kwargs)
+        return x
+
+class GATv2Block(nn.Module):
+    """ 
+    class to build GATv2Block 
+    """
+    block_type = "GATv2Block"
+
+    def __init__(
+            self, 
+            input_channels,
+            output_channels,
+            heads=1,
+            concat=True,
+            negative_slope=0.2,
+            dropout=0.0,
+            add_self_loops=True,
+            edge_dim=None,
+            fill_value='mean',
+            bias=True,
+            share_weights=False,
+            gnn_cpa_model='none',
+            **kwargs,
+        ):
+        """ 
+        class constructor for attributes of the GATv2Block 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+
+        # input and output channels for DNAGATv2Conv 
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # number of heads for gatv2
+        self.heads = heads
         # boolean that when set to false, the gatv2 multi-head attentions are averaged instead of concatenated
         self.concat = concat
         # negative slope of leaky relu
@@ -237,35 +308,39 @@ class DNAGATv2Block(nn.Module):
         self.fill_value = fill_value
         # boolean for bias
         self.bias = bias
+        # whether to use same matrix for target and source nodes
+        self.share_weights = share_weights
+        # cardinality preserved attention (cpa) model
+        self.gnn_cpa_model = gnn_cpa_model
 
-        # basic DNAGATv2Block. input --> DNAGATv2Conv --> graph norm
+        # basic GATv2Block. input --> GATv2Conv --> graph norm
         self.block = gnn.Sequential('x, edge_index', 
                                     [
-                                        # DNAGATv2Conv block 
-                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, 
-                                                      att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, 
-                                                      concat=concat, negative_slope=negative_slope, dropout=dropout, 
-                                                      add_self_loops=add_self_loops, edge_dim=edge_dim, 
-                                                      fill_value=fill_value, bias=bias, cpa_model=cpa_model), 
+                                        # GATv2Conv block 
+                                        (GATv2Conv(in_channels=input_channels, out_channels=output_channels, 
+                                                   heads=heads, concat=concat, negative_slope=negative_slope, 
+                                                   dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, 
+                                                   fill_value=fill_value, bias=bias, share_weights=share_weights, 
+                                                   gnn_cpa_model=gnn_cpa_model), 
                                          'x, edge_index -> x'), 
                                         # graph norm
-                                        (gnn.GraphNorm(self.output_channels * self.att_heads \
+                                        (gnn.GraphNorm(self.output_channels * self.heads \
                                                        if concat == True else self.output_channels), 'x -> x')
                                     ]
         )  
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, *args, **kwargs):
         """ 
         function for forward pass of DNAGATv2Block 
         """
-        x = self.block(x, edge_index)
-        
+        x = self.block(x, edge_index, *args, **kwargs)
         return x
 
 class GINBlock(nn.Module):
     """ 
     class to build GINBlock 
     """
+    block_type = "GINBlock"
 
     def __init__(self, input_channels, output_channels, n_gin_fc_layers, activation_func="relu", eps=0.0, 
                  train_eps=False, edge_dim=None):
@@ -320,12 +395,11 @@ class GINBlock(nn.Module):
                                     ]
         )  
 
-    def forward(self, x, edge_index, edge_attr=None):
+    def forward(self, x, edge_index, *args, **kwargs):
         """ 
-        function for forward pass of GINEBlock 
+        function for forward pass of GINBlock 
         """
-        x = self.block(x, edge_index)
-        
+        x = self.block(x, edge_index, *args, **kwargs)
         return x
 
 class NNLayers(nn.Module):
@@ -346,11 +420,12 @@ class NNLayers(nn.Module):
         self.block = block
         # output channels/shape
         self.output_channels = output_channels
+        # input and output channels/shape for each block
         self.input_output_list = list(zip(output_channels[:], output_channels[1:]))
         # module list of layers with same args and kwargs
         self.blocks = nn.ModuleList([
             self.block(self.input_channels, self.output_channels[0], *args, **kwargs),
-            *[self.block(input_channels, output_channels, *args, **kwargs) \
+            *[self.block(input_channels, output_channels, *args, **kwargs)\
             for (input_channels, output_channels) in self.input_output_list]   
         ])
 
@@ -361,7 +436,6 @@ class NNLayers(nn.Module):
         # iterate over each block
         for block in self.blocks:
             x = block(x, *args, **kwargs)
-            
         return x 
 
     def get_flat_output_shape(self, input_shape):
@@ -375,7 +449,6 @@ class NNLayers(nn.Module):
             x = block(x)
         # flatten resulting tensor and obtain number of features
         n_size = x.view(1, -1).size(1)
-        
         return n_size
 
 class DNAGATv2Layers(NNLayers):
@@ -397,40 +470,50 @@ class DNAGATv2Layers(NNLayers):
         """
         # add layer dimension to initial input
         x = T.unsqueeze(x, 1)
-    
         # iterate over each block
         for block in self.blocks:
             # output y with shape [num_nodes, out_channels]
             y = block(x, *args, **kwargs)
             # add layer dimensions to output and concatenate y to existing x
             x = T.cat((x, T.unsqueeze(y, 1)), 1)
-
         return x 
 
-class GINLayers(NNLayers):
+class GNNAllLayers(NNLayers):
     """ 
-    class to build layers of GINConv blocks to include all past layers
+    class to build layers of GNN blocks to include all layers
     """
-
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):
         """ 
-        class constructor for attributes of GINLayers 
+        class constructor for attributes of GNNAllLayers 
         """
         # inherit class constructor attributes from nn_layers
         super().__init__(input_channels, block, output_channels, *args, **kwargs)
+
+        # update GATv2Block accounting for concatenation or averaging of attention heads
+        if self.block.block_type == 'GATv2Block':
+            # obtain relevant attributes for DNAGATv2Block that determines output size
+            self.heads = kwargs.get('heads', 1)
+            self.concat = kwargs.get('concat', False)
+            # input and output channels/shape for each block
+            self.input_output_list = list(zip([i * self.heads for i in output_channels], output_channels[1:]))\
+                                     if self.concat else list(zip(output_channels[:], output_channels[1:]))
+            # module list of layers with same args and kwargs
+            self.blocks = nn.ModuleList([
+                self.block(self.input_channels, self.output_channels[0], *args, **kwargs),
+                *[self.block(input_channels, output_channels, *args, **kwargs)\
+                for (input_channels, output_channels) in self.input_output_list]   
+            ])
 
     def forward(self, x, *args, **kwargs):
         """ 
         function for forward pass of layers
         """
-        # add layer dimension to final output
-        out = T.unsqueeze(x, 1)
-    
+        # create copy of input
+        out = x.detach().clone()
         # iterate over each block
         for block in self.blocks:
             # output y with shape [num_nodes, out_channels]
             x = block(x, *args, **kwargs)
-            # add layer dimensions to output and concatenate y to existing x
-            out = T.cat((out, T.unsqueeze(x, 1)), 1)
-
+            # concatenate to output
+            out = T.cat((out, x), -1)
         return out 

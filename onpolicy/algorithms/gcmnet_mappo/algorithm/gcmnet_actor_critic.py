@@ -1,7 +1,15 @@
 import torch
 import torch.nn as nn
 
-from onpolicy.algorithms.utils.nn import DNAGATv2Layers, DNAGATv2Block, GINBlock, GINLayers, MLPBlock, NNLayers
+from onpolicy.algorithms.utils.nn import (
+    DNAGATv2Block,
+    DNAGATv2Layers,
+    GATv2Block,
+    GINBlock, 
+    GNNAllLayers, 
+    MLPBlock, 
+    NNLayers
+)
 from onpolicy.algorithms.utils.popart import PopArt
 from onpolicy.algorithms.utils.single_act import SingleACTLayer
 from onpolicy.algorithms.utils.util import init, check, complete_graph_edge_index
@@ -34,7 +42,13 @@ class GCMNetActor(nn.Module):
         self.num_agents = args.num_agents
         self.n_rollout_threads = args.n_rollout_threads
         self.gnn_architecture = args.gcmnet_gnn_architecture
+        self.gnn_output_dims = args.gcmnet_gnn_output_dims
+        self.gnn_att_heads = args.gcmnet_gnn_att_heads
+        self.gnn_dna_gatv2_multi_att_heads = args.gcmnet_gnn_dna_gatv2_multi_att_heads
+        self.gnn_att_concat = args.gcmnet_gnn_att_concat
+        self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
+        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
@@ -47,8 +61,6 @@ class GCMNetActor(nn.Module):
         self.k = args.gcmnet_k
         self.rni = args.gcmnet_rni
         self.rni_ratio = args.gcmnet_rni_ratio
-        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
-        self.cpa_model = args.gcmnet_cpa_model
 
         obs_shape = get_shape_from_obs_space(obs_space)
         if isinstance(obs_shape, (list, tuple)):
@@ -65,16 +77,38 @@ class GCMNetActor(nn.Module):
             self.gnn_layers = DNAGATv2Layers(input_channels=self.obs_dims + self.rni_dims if self.rni \
                                                             else self.obs_dims, 
                                              block=DNAGATv2Block, 
-                                             output_channels=[self.obs_dims + self.rni_dims if self.rni\
-                                                              else self.obs_dims for i in range(self.n_gnn_layers)], 
-                                             concat=False,
-                                             cpa_model=self.cpa_model)
+                                             output_channels=[self.obs_dims + self.rni_dims if self.rni \
+                                                              else self.obs_dims for _ in range(self.n_gnn_layers)],
+                                             att_heads=self.gnn_att_heads,
+                                             mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
+                                             gnn_cpa_model=self.gnn_cpa_model)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
+                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
+        elif self.gnn_architecture == 'gatv2':
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GATv2Block, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                                           heads=self.gnn_att_heads,
+                                           concat=self.gnn_att_concat,
+                                           gnn_cpa_model=self.gnn_cpa_model)
+            # calculate relevant input dimensions
+            if self.rni:
+                self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims + \
+                                       self.rni_dims if self.gnn_att_concat else \
+                                       self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims
+            else: 
+                self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims \
+                                       if self.gnn_att_concat else \
+                                       self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gin':
-            self.gnn_layers = GINLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                        block=GINBlock, 
-                                        output_channels=[self.obs_dims + self.rni_dims if self.rni\
-                                                         else self.obs_dims for i in range(self.n_gnn_layers)],
-                                        n_gin_fc_layers=self.n_gin_fc_layers)
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GINBlock, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                                           n_gin_fc_layers=self.n_gin_fc_layers)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
@@ -87,14 +121,12 @@ class GCMNetActor(nn.Module):
 
         # list of lstms for self communication memory unit (scmu) for each agent
         # somu_lstm_input_size are all layers of gnn
-        self.scmu_lstm_list = \
-            nn.ModuleList([nn.LSTM(input_size=(self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims)\
-                                               if self.rni else (self.n_gnn_layers + 1) * self.obs_dims, 
-                                   hidden_size=self.scmu_lstm_hidden_size, 
-                                   num_layers=self.scmu_n_layers, 
-                                   batch_first=True,
-                                   device=device)
-                           for _ in range(self.num_agents)])
+        self.scmu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.scmu_input_dims, 
+                                                     hidden_size=self.scmu_lstm_hidden_size, 
+                                                     num_layers=self.scmu_n_layers, 
+                                                     batch_first=True,
+                                                     device=device)
+                                             for _ in range(self.num_agents)])
 
         # multi-head self attention layer for somu and scmu to selectively choose between the lstms outputs
         self.somu_multi_att_layer_list = \
@@ -116,10 +148,7 @@ class GCMNetActor(nn.Module):
         # input channels are all layers of gnn (including initial observations) 
         # + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=(self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
-                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
-                                                 else (self.n_gnn_layers + 1) * self.obs_dims + \
+        self.fc_layers = NNLayers(input_channels=self.scmu_input_dims + \
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size, 
                                   block=MLPBlock, 
@@ -208,12 +237,9 @@ class GCMNetActor(nn.Module):
         action_log_probs_list = []
         
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
-        # --> gnn_layers [shape: (batch_size, num_agents, (n_gnn_layers + 1) * obs_dims / 
-        #                        (n_gnn_layers + 1) * (obs_dims + rni_dims))]
+        # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
         gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(batch_size, self.num_agents, 
-                                  (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
-                                  (self.n_gnn_layers + 1) * self.obs_dims)
+                         .reshape(batch_size, self.num_agents, self.scmu_input_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -238,8 +264,7 @@ class GCMNetActor(nn.Module):
                                                         .unsqueeze(-1)\
                                                         .contiguous()))
             # gnn_output[:, i, :].unsqueeze(dim=1) 
-            # [shape: (batch_size, sequence_length=1, (n_gnn_layers + 1) * obs_dims / 
-            #          (n_gnn_layers + 1) * (obs_dims + rni_dims))],
+            # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
             # masks[:, i, :].repeat(1, self.somu_n_layers).transpose(0, 1).unsqueeze(-1).contiguous() 
             # [shape: (scmu_n_layers, batch_size, 1)], 
             # (h_0 [shape: (scmu_n_layers, batch_size, scmu_lstm_hidden_state)], 
@@ -293,12 +318,8 @@ class GCMNetActor(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (batch_size, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (batch_size, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             output = torch.cat((gnn_output[:, i, :], 
                                 somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
                                 somu_att_output.reshape(batch_size, 
@@ -308,12 +329,8 @@ class GCMNetActor(nn.Module):
                                                         2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
                                ),
                                dim=-1)
-            # output [shape: (batch_size, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (batch_size, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
             # fc_layers --> act [shape: (batch_size, action_space_dim)]
@@ -325,7 +342,7 @@ class GCMNetActor(nn.Module):
        
         # [shape: (batch_size, num_agents, action_space_dim)]
         # [shape: (batch_size, num_agents, somu_n_layers / scmu_n_layers, 
-        #         somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+        #          somu_lstm_hidden_size / scmu_lstm_hidden_size)]
         return torch.stack(actions_list, dim=1), torch.stack(action_log_probs_list, dim=1), \
                torch.stack(somu_lstm_hidden_states_list, dim=1), torch.stack(somu_lstm_cell_states_list, dim=1), \
                torch.stack(scmu_lstm_hidden_states_list, dim=1), torch.stack(scmu_lstm_cell_states_list, dim=1)
@@ -434,12 +451,9 @@ class GCMNetActor(nn.Module):
         dist_entropy_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_gnn_layers + 1) * obs_dims \ 
-        # (n_gnn_layers + 1) * (obs_dims + rni_dims))]
+        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
         gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, 
-                                  (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
-                                  (self.n_gnn_layers + 1) * self.obs_dims)
+                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):
@@ -482,7 +496,7 @@ class GCMNetActor(nn.Module):
                                                                .unsqueeze(-1)\
                                                                .contiguous()))
                 # gnn_output[:, j, i, :].unsqueeze(dim=1) 
-                # [shape: (batch_size, sequence_length=1, (n_gnn_layers + 1) * obs_dims)],
+                # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
                 # masks[:, j, i, :].repeat(1, self.scmu_n_layers).transpose(0, 1).unsqueeze(-1).contiguous() 
                 # [shape: (scmu_n_layers, batch_size, 1)],
                 # (h_0 [shape: (scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)], 
@@ -516,10 +530,10 @@ class GCMNetActor(nn.Module):
             scmu_lstm_output = torch.stack(scmu_seq_lstm_output_list, dim=1)\
                                     .reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)
             # [shape: (data_chunk_length, somu_n_layers / scmu_n_layers, mini_batch_size, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
             # somu_lstm_hidden_states / somu_lstm_cell_states / scmu_lstm_hidden_states / scmu_lstm_cell_states
             # [shape: (mini_batch_size * data_chunk_length, somu_n_layers / scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
                                            .permute(2, 0, 1, 3)\
                                            .reshape(mini_batch_size * self.data_chunk_length, 
@@ -543,16 +557,16 @@ class GCMNetActor(nn.Module):
             # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
             # somu_hidden_cell_states / scmu_hidden_cell_states
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
             scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
             # self attention for memory from somu and scmu
             # somu_hidden_cell_states / scmu_hidden_cell_states 
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
             # somu_att_output / scmu_att_output 
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
                                                                 somu_hidden_cell_states, 
                                                                 somu_hidden_cell_states)[0]
@@ -560,12 +574,9 @@ class GCMNetActor(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
                                 somu_lstm_output,
                                 somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
@@ -575,12 +586,9 @@ class GCMNetActor(nn.Module):
                                                         2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
                                ), 
                                dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)
@@ -624,7 +632,13 @@ class GCMNetCritic(nn.Module):
         self.num_agents = args.num_agents
         self.n_rollout_threads = args.n_rollout_threads
         self.gnn_architecture = args.gcmnet_gnn_architecture
+        self.gnn_output_dims = args.gcmnet_gnn_output_dims
+        self.gnn_att_heads = args.gcmnet_gnn_att_heads
+        self.gnn_dna_gatv2_multi_att_heads = args.gcmnet_gnn_dna_gatv2_multi_att_heads
+        self.gnn_att_concat = args.gcmnet_gnn_att_concat
+        self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
+        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
@@ -637,8 +651,6 @@ class GCMNetCritic(nn.Module):
         self.k = args.gcmnet_k
         self.rni = args.gcmnet_rni
         self.rni_ratio = args.gcmnet_rni_ratio
-        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
-        self.cpa_model = args.gcmnet_cpa_model
 
         cent_obs_space = get_shape_from_obs_space(cent_obs_space)
         if isinstance(cent_obs_space, (list, tuple)):
@@ -655,16 +667,38 @@ class GCMNetCritic(nn.Module):
             self.gnn_layers = DNAGATv2Layers(input_channels=self.obs_dims + self.rni_dims if self.rni \
                                                             else self.obs_dims, 
                                              block=DNAGATv2Block, 
-                                             output_channels=[self.obs_dims + self.rni_dims if self.rni\
-                                                              else self.obs_dims for i in range(self.n_gnn_layers)], 
-                                             concat=False,
-                                             cpa_model=self.cpa_model)
+                                             output_channels=[self.obs_dims + self.rni_dims if self.rni \
+                                                              else self.obs_dims for _ in range(self.n_gnn_layers)],
+                                             att_heads=self.gnn_att_heads,
+                                             mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
+                                             gnn_cpa_model=self.gnn_cpa_model)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
+                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
+        elif self.gnn_architecture == 'gatv2':
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GATv2Block, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                                           heads=self.gnn_att_heads,
+                                           concat=self.gnn_att_concat,
+                                           gnn_cpa_model=self.gnn_cpa_model)
+            # calculate relevant input dimensions
+            if self.rni:
+                self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims + \
+                                       self.rni_dims if self.gnn_att_concat else \
+                                       self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims
+            else: 
+                self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims \
+                                       if self.gnn_att_concat else \
+                                       self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gin':
-            self.gnn_layers = GINLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                        block=GINBlock, 
-                                        output_channels=[self.obs_dims + self.rni_dims if self.rni\
-                                                         else self.obs_dims for i in range(self.n_gnn_layers)],
-                                        n_gin_fc_layers=self.n_gin_fc_layers)
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GINBlock, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                                           n_gin_fc_layers=self.n_gin_fc_layers)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
@@ -677,14 +711,12 @@ class GCMNetCritic(nn.Module):
 
         # list of lstms for self communication memory unit (scmu) for each agent
         # somu_lstm_input_size are all layers of gnn
-        self.scmu_lstm_list = \
-            nn.ModuleList([nn.LSTM(input_size=(self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims)\
-                                               if self.rni else (self.n_gnn_layers + 1) * self.obs_dims, 
-                                   hidden_size=self.scmu_lstm_hidden_size, 
-                                   num_layers=self.scmu_n_layers, 
-                                   batch_first=True,
-                                   device=device)
-                           for _ in range(self.num_agents)])
+        self.scmu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.scmu_input_dims, 
+                                                     hidden_size=self.scmu_lstm_hidden_size, 
+                                                     num_layers=self.scmu_n_layers, 
+                                                     batch_first=True,
+                                                     device=device)
+                                             for _ in range(self.num_agents)])
 
         # multi-head self attention layer for somu and scmu to selectively choose between the lstms outputs
         self.somu_multi_att_layer_list = \
@@ -706,10 +738,7 @@ class GCMNetCritic(nn.Module):
         # input channels are all layers of gnn (including initial observations) 
         # + concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=(self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) + \
-                                                 (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
-                                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size if self.rni
-                                                 else (self.n_gnn_layers + 1) * self.obs_dims + \
+        self.fc_layers = NNLayers(input_channels=self.scmu_input_dims + \
                                                  (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
                                                  (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size, 
                                   block=MLPBlock, 
@@ -796,12 +825,9 @@ class GCMNetCritic(nn.Module):
         output_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
-        # --> gnn_layers [shape: (batch_size, num_agents, (n_gnn_layers + 1) * obs_dims / 
-        #                        (n_gnn_layers + 1) * (obs_dims + rni_dims))]
+        # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
         gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(batch_size, self.num_agents, 
-                                  (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
-                                  (self.n_gnn_layers + 1) * self.obs_dims)
+                         .reshape(batch_size, self.num_agents, self.scmu_input_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -826,8 +852,7 @@ class GCMNetCritic(nn.Module):
                                                         .unsqueeze(-1)\
                                                         .contiguous()))
             # gnn_output[:, i, :].unsqueeze(dim=1) 
-            # [shape: (batch_size, sequence_length=1, (n_gnn_layers + 1) * obs_dims / 
-            #          (n_gnn_layers + 1) * (obs_dims + rni_dims))],
+            # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
             # masks[:, i, :].repeat(1, self.somu_n_layers).transpose(0, 1).unsqueeze(-1).contiguous() 
             # [shape: (scmu_n_layers, batch_size, 1)], 
             # (h_0 [shape: (scmu_n_layers, batch_size, scmu_lstm_hidden_state)], 
@@ -881,12 +906,8 @@ class GCMNetCritic(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (batch_size, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (batch_size, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             output = torch.cat((gnn_output[:, i, :], 
                                 somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
                                 somu_att_output.reshape(batch_size, 
@@ -896,12 +917,8 @@ class GCMNetCritic(nn.Module):
                                                         2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
                                ),
                                dim=-1)
-            # output [shape: (batch_size, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (batch_size, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> fc_layers [shape: (batch_size, fc_output_dims)]
             output = self.fc_layers(output)
             output_list.append(output)
@@ -1003,12 +1020,9 @@ class GCMNetCritic(nn.Module):
         output_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, (n_gnn_layers + 1) * obs_dims \ 
-        # (n_gnn_layers + 1) * (obs_dims + rni_dims))]
+        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
         gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, 
-                                  (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) if self.rni else\
-                                  (self.n_gnn_layers + 1) * self.obs_dims)
+                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):
@@ -1051,7 +1065,7 @@ class GCMNetCritic(nn.Module):
                                                                .unsqueeze(-1)\
                                                                .contiguous()))
                 # gnn_output[:, j, i, :].unsqueeze(dim=1) 
-                # [shape: (batch_size, sequence_length=1, (n_gnn_layers + 1) * obs_dims)],
+                # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
                 # masks[:, j, i, :].repeat(1, self.scmu_n_layers).transpose(0, 1).unsqueeze(-1).contiguous() 
                 # [shape: (scmu_n_layers, batch_size, 1)],
                 # (h_0 [shape: (scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)], 
@@ -1085,10 +1099,10 @@ class GCMNetCritic(nn.Module):
             scmu_lstm_output = torch.stack(scmu_seq_lstm_output_list, dim=1)\
                                     .reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)
             # [shape: (data_chunk_length, somu_n_layers / scmu_n_layers, mini_batch_size, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
             # somu_lstm_hidden_states / somu_lstm_cell_states / scmu_lstm_hidden_states / scmu_lstm_cell_states
             # [shape: (mini_batch_size * data_chunk_length, somu_n_layers / scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
                                            .permute(2, 0, 1, 3)\
                                            .reshape(mini_batch_size * self.data_chunk_length, 
@@ -1112,16 +1126,16 @@ class GCMNetCritic(nn.Module):
             # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
             # somu_hidden_cell_states / scmu_hidden_cell_states
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
             scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
             # self attention for memory from somu and scmu
             # somu_hidden_cell_states / scmu_hidden_cell_states 
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)] --> 
             # somu_att_output / scmu_att_output 
             # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers / 2 * scmu_n_layers, 
-            #         somu_lstm_hidden_state / scmu_lstm_hidden_state)]
+            #          somu_lstm_hidden_state / scmu_lstm_hidden_state)]
             somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
                                                                 somu_hidden_cell_states, 
                                                                 somu_hidden_cell_states)[0]
@@ -1129,12 +1143,9 @@ class GCMNetCritic(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
                                 somu_lstm_output,
                                 somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
@@ -1144,12 +1155,9 @@ class GCMNetCritic(nn.Module):
                                                         2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
                                ), 
                                dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * obs_dims + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size) / 
-            #                (mini_batch_size * data_chunk_length, (n_gnn_layers + 1) * (obs_dims + rni_dims) + \
-            #                (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             output = self.fc_layers(output)

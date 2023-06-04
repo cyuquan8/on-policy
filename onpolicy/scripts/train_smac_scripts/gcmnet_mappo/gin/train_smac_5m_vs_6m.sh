@@ -9,31 +9,31 @@ n_rollout_threads=8
 num_mini_batch=1
 episode_length=400
 num_env_steps=10000000
-lr=0.0001
-critic_lr=0.0001
-ppo_epoch=15
-clip_param=0.2
+lr=0.0005
+critic_lr=0.0005
+ppo_epoch=10
+clip_param=0.1
 
 gcmnet_gnn_architecture="gin"
 gcmnet_gnn_output_dims=64
-gcmnet_gnn_att_heads=4
-gcmnet_gnn_dna_gatv2_multi_att_heads=4
+gcmnet_gnn_att_heads=8
+gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=4
 gcmnet_n_gin_fc_layers=2
 gcmnet_somu_n_layers=4
 gcmnet_somu_lstm_hidden_size=64
-gcmnet_somu_multi_att_n_heads=4
+gcmnet_somu_multi_att_n_heads=8
 gcmnet_scmu_n_layers=4
 gcmnet_scmu_lstm_hidden_size=64
-gcmnet_scmu_multi_att_n_heads=4
-gcmnet_fc_output_dims=512
+gcmnet_scmu_multi_att_n_heads=8
+gcmnet_fc_output_dims=128
 gcmnet_n_fc_layers=2
 gcmnet_k=1
 gcmnet_rni_ratio=0.2
 
 eval_episodes=32
-exp="gnn_arch_${gcmnet_gnn_architecture}_n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_n_gnn_layers_${gcmnet_n_gnn_layers}"
+exp="gnn_arch_${gcmnet_gnn_architecture}_n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_n_gnn_layers_${gcmnet_n_gnn_layers}_lr_${lr}_critic_lr_${critic_lr}_ppo_epoch_${ppo_epoch}_clip_param_${clip_param}"
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 for seed in `seq ${seed_max}`;

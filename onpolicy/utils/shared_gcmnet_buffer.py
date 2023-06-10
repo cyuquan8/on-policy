@@ -21,11 +21,15 @@ class SharedGCMNetReplayBuffer(object):
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.gcmnet_scmu_lstm_hidden_size
+        self.dynamics = args.gcmnet_dynamics
+        self.dynamics_reward = args.gcmnet_dynamics_reward
+        self.dynamics_reward_coef = args.gcmnet_dynamics_reward_coef
         self.num_agents = num_agents
         self._use_gae = args.use_gae
         self._use_popart = args.use_popart
         self._use_valuenorm = args.use_valuenorm
         self._use_proper_time_limits = args.use_proper_time_limits
+        assert not (self.dynamics == False and self.dynamics_reward == True), "Can't have dynamics reward w/o dynamics"
 
         obs_shape = get_shape_from_obs_space(obs_space)
         share_obs_shape = get_shape_from_obs_space(cent_obs_space)
@@ -39,6 +43,11 @@ class SharedGCMNetReplayBuffer(object):
         self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, self.num_agents, *share_obs_shape),
                                   dtype=np.float32)
         self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
+        if self.dynamics:
+            self.obs_pred = np.zeros((self.episode_length, self.n_rollout_threads, num_agents, *obs_shape), 
+                                     dtype=np.float32)
+        else:
+            self.obs_pred = None
 
         self.somu_hidden_states_actor = \
             np.zeros((self.episode_length + 1, 
@@ -127,7 +136,7 @@ class SharedGCMNetReplayBuffer(object):
     def insert(self, share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
                scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, scmu_hidden_states_critic, 
                scmu_cell_states_critic, actions, action_log_probs, value_preds, rewards, masks, bad_masks=None, 
-               active_masks=None, available_actions=None):
+               active_masks=None, available_actions=None, obs_pred=None):
         """
         Insert data into the buffer.
         :param share_obs: (argparse.Namespace) arguments containing relevant model, policy, and env information.
@@ -148,6 +157,7 @@ class SharedGCMNetReplayBuffer(object):
         :param bad_masks: (np.ndarray) action space for agents.
         :param active_masks: (np.ndarray) denotes whether an agent is active or dead in the env.
         :param available_actions: (np.ndarray) actions available to each agent. If None, all actions are available.
+        :param obs_pred: (np.ndarray) observation predictions from dynamics models if used else None.
         """
         self.share_obs[self.step + 1] = share_obs.copy()
         self.obs[self.step + 1] = obs.copy()
@@ -170,13 +180,15 @@ class SharedGCMNetReplayBuffer(object):
             self.active_masks[self.step + 1] = active_masks.copy()
         if available_actions is not None:
             self.available_actions[self.step + 1] = available_actions.copy()
+        if obs_pred is not None:
+            self.obs_pred[self.step] = obs_pred.copy()
 
         self.step = (self.step + 1) % self.episode_length
 
     def chooseinsert(self, share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
                      scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, 
                      scmu_hidden_states_critic, scmu_cell_states_critic, actions, action_log_probs, value_preds, 
-                     rewards, masks, bad_masks=None, active_masks=None, available_actions=None):
+                     rewards, masks, bad_masks=None, active_masks=None, available_actions=None, obs_pred=None):
         """
         Insert data into the buffer. This insert function is used specifically for Hanabi, which is turn based.
         :param share_obs: (argparse.Namespace) arguments containing relevant model, policy, and env information.
@@ -197,6 +209,7 @@ class SharedGCMNetReplayBuffer(object):
         :param bad_masks: (np.ndarray) denotes indicate whether whether true terminal state or due to episode limit
         :param active_masks: (np.ndarray) denotes whether an agent is active or dead in the env.
         :param available_actions: (np.ndarray) actions available to each agent. If None, all actions are available.
+        :param obs_pred: (np.ndarray) observation predictions from dynamics models if used else None.
         """
         self.share_obs[self.step] = share_obs.copy()
         self.obs[self.step] = obs.copy()
@@ -219,6 +232,8 @@ class SharedGCMNetReplayBuffer(object):
             self.active_masks[self.step] = active_masks.copy()
         if available_actions is not None:
             self.available_actions[self.step] = available_actions.copy()
+        if obs_pred is not None:
+            self.obs_pred[self.step] = obs_pred.copy()
 
         self.step = (self.step + 1) % self.episode_length
 
@@ -259,6 +274,19 @@ class SharedGCMNetReplayBuffer(object):
         :param next_value: (np.ndarray) value predictions for the step after the last episode step.
         :param value_normalizer: (PopArt) If not None, PopArt value normalizer instance.
         """
+        # whether to implement instrinsic exploration reward from dynamics models
+        if self.dynamics and self.dynamics_reward:
+            # obtain feature wise variance between observation predictions from dynamics models from each agent
+            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, obs_shape)] --> 
+            # [shape: (self.episode_length, self.n_rollout_threads, 1, obs_shape)]
+            var = np.var(self.obs_pred, axis=-2, keepdims=True)
+            # calculate disagreement / variance reward via mean observation feature-wise
+            # [shape: (self.episode_length, self.n_rollout_threads, 1, obs_shape)] -->
+            # [shape: (self.episode_length, self.n_rollout_threads, 1, 1)]
+            var_rew = np.mean(var, axis=-1, keepdims=True)
+            # add disagreement / variance reward to existing reward broadcasted across each agent
+            self.rewards += self.dynamics_reward_coef * var_rew
+
         if self._use_proper_time_limits:
             if self._use_gae:
                 self.value_preds[-1] = next_value
@@ -403,6 +431,8 @@ class SharedGCMNetReplayBuffer(object):
             actions_batch = np.stack(actions_batch, axis=0)
             if self.available_actions is not None:
                 available_actions_batch = np.stack(available_actions_batch, axis=0)
+            else:
+                available_actions_batch = None
             value_preds_batch = np.stack(value_preds_batch, axis=0)
             return_batch = np.stack(return_batch, axis=0)
             masks_batch = np.stack(masks_batch, axis=0)

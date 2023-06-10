@@ -9,7 +9,7 @@ import torch
 
 from onpolicy.config import get_config
 from onpolicy.envs.gym_dragon.gym_dragon_env import GymDragonEnv
-from onpolicy.envs.env_wrappers import AvailableActionsDummyVecEnv, AvailableActionsSubprocVecEnv
+from onpolicy.envs.env_wrappers import AvailableActionsResetSeedDummyVecEnv, AvailableActionsResetSeedSubprocVecEnv
 from pathlib import Path
 
 """Train script for gym_dragon."""
@@ -23,13 +23,13 @@ def make_train_env(all_args):
                 print("Can not support the " +
                       all_args.env_name + "environment.")
                 raise NotImplementedError
-            # env.seed(all_args.seed + rank * 1000)
+            env.seed = all_args.seed + rank * 1000
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
-        return AvailableActionsDummyVecEnv([get_env_fn(0)])
+        return AvailableActionsResetSeedDummyVecEnv([get_env_fn(0)])
     else:
-        return AvailableActionsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+        return AvailableActionsResetSeedSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def make_eval_env(all_args):
@@ -41,13 +41,13 @@ def make_eval_env(all_args):
                 print("Can not support the " +
                       all_args.env_name + "environment.")
                 raise NotImplementedError
-            # env.seed(all_args.seed * 50000 + rank * 10000)
+            env.seed = all_args.seed * 50000 + rank * 10000
             return env
         return init_env
     if all_args.n_eval_rollout_threads == 1:
-        return AvailableActionsDummyVecEnv([get_env_fn(0)])
+        return AvailableActionsResetSeedDummyVecEnv([get_env_fn(0)])
     else:
-        return AvailableActionsSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)])
+        return AvailableActionsResetSeedSubprocVecEnv([get_env_fn(i) for i in range(all_args.n_eval_rollout_threads)])
 
 
 def parse_args(args, parser):

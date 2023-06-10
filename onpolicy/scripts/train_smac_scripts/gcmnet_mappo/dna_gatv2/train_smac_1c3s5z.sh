@@ -11,29 +11,39 @@ episode_length=400
 num_env_steps=10000000
 lr=0.0005
 critic_lr=0.0005
-ppo_epoch=10
-clip_param=0.1
+ppo_epoch=15
+clip_param=0.2
 
 gcmnet_gnn_architecture="dna_gatv2"
-gcmnet_gnn_output_dims=64
-gcmnet_gnn_att_heads=8
+gcmnet_gnn_output_dims=128  
+gcmnet_gnn_att_heads=4
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=4
 gcmnet_n_gin_fc_layers=2
 gcmnet_somu_n_layers=4
-gcmnet_somu_lstm_hidden_size=64
-gcmnet_somu_multi_att_n_heads=8
+gcmnet_somu_lstm_hidden_size=128
+gcmnet_somu_multi_att_n_heads=4
 gcmnet_scmu_n_layers=4
-gcmnet_scmu_lstm_hidden_size=64
-gcmnet_scmu_multi_att_n_heads=8
+gcmnet_scmu_lstm_hidden_size=128
+gcmnet_scmu_multi_att_n_heads=4
 gcmnet_fc_output_dims=128
 gcmnet_n_fc_layers=2
 gcmnet_k=1
 gcmnet_rni_ratio=0.2
+gcmnet_dynamics_fc_output_dims=128
+gcmnet_dynamics_n_fc_layers=2
+gcmnet_dynamics_loss_coef=0.5
+gcmnet_dynamics_reward_coef=1
 
 eval_episodes=32
-exp="gnn_arch_${gcmnet_gnn_architecture}_gnn_att_heads_${gcmnet_gnn_att_heads}_cpa_model_${gcmnet_cpa_model}_n_gnn_layers_${gcmnet_n_gnn_layers}_lr_${lr}_critic_lr_${critic_lr}_ppo_epoch_${ppo_epoch}_clip_param_${clip_param}"
+exp="gnn_arch_${gcmnet_gnn_architecture}_\
+gnn_att_heads_${gcmnet_gnn_att_heads}_\
+cpa_model_${gcmnet_cpa_model}_\
+n_gnn_layers_${gcmnet_n_gnn_layers}_\
+lr_${lr}_critic_lr_${critic_lr}_\
+ppo_epoch_${ppo_epoch}_\
+clip_param_${clip_param}"
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 for seed in `seq ${seed_max}`;
@@ -62,7 +72,15 @@ do
     --gcmnet_n_fc_layers ${gcmnet_n_fc_layers}\
     --gcmnet_k ${gcmnet_k}\
     --gcmnet_rni\
-    --gcmnet_rni_ratio ${gcmnet_rni_ratio}
+    --gcmnet_rni_ratio ${gcmnet_rni_ratio}\
+    --gcmnet_dynamics\
+    --gcmnet_dynamics_reward\
+    --gcmnet_dynamics_fc_output_dims ${gcmnet_dynamics_fc_output_dims}\
+    --gcmnet_dynamics_n_fc_layers ${gcmnet_dynamics_n_fc_layers}\
+    --gcmnet_dynamics_loss_coef ${gcmnet_dynamics_loss_coef}\
+    --gcmnet_dynamics_reward_coef ${gcmnet_dynamics_reward_coef}\
     # --gcmnet_gnn_att_concat\
     # --gcmnet_knn\
+    # --gcmnet_dynamics\
+    # --gcmnet_dynamics_reward\
 done

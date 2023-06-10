@@ -73,7 +73,7 @@ def get_config():
         --use_recurrent_policy
             by default, use Recurrent Policy. If set, do not use.
         --recurrent_N <int>
-            The number of recurrent layers ( default 1).
+            The number of recurrent layers (default 1).
         --data_chunk_length <int>
             Time length of chunks used to train a recurrent_policy, default 10.
 
@@ -107,17 +107,29 @@ def get_config():
         --gcmnet_scmu_multi_att_n_heads <int>
             Number of Heads for Multi-Attention for SCMU outputs in GCMNet actor network, (default: 2)
         --gcmnet_fc_output_dims <int>
-            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 512)
+            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 128)
         --gcmnet_n_fc_layers <int>
-            Number of MLP layers in GCMNet actor and critic network, (default: 3)
+            Number of MLP layers in GCMNet actor and critic network, (default: 2)
         --gcmnet_knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
         --gcmnet_k <int>
-            Number of Neighbours for K-Nearest Neighbour (default: 1)
+            Number of Neighbours for K-Nearest Neighbour, (default: 1)
         --gcmnet_rni
-            Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN (default: False)
+            Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN, (default: False)
         --gcmnet_rni_ratio <float>
-            Ratio of randomly generated vector in RNI to original observation feature vector (default: 0.25)
+            Ratio of randomly generated vector in RNI to original observation feature vector, (default: 0.25)
+        --gcmnet_dynamics 
+            Whether to use dynamics models in GCMNet actor network, (default: False)
+        --gcmnet_dynamics_reward 
+            Whether to use dynamics models in GCMNet actor network to generate intrinsic exploration reward from disagreement via variance, (default: False)
+        --gcmnet_dynamics_fc_output_dims
+            Hidden Size for MLP layers in dynamics models in GCMNet actor network, (default: 512)
+        --gcmnet_dynamics_n_fc_layers
+            Number of MLP layers in dynamics models in GCMNet actor network, (default: 2)
+        --gcmnet_dynamics_loss_coef
+            Coefficient for dynamics model loss, (default: 0.5)
+        --gcmnet_dynamics_reward_coef
+            Coefficient for intrinsic exploration reward from disagreement via variance, (default: 1)
 
     MuDMAF parameters:
         --mudmaf_conv_output_dims <int>
@@ -143,9 +155,9 @@ def get_config():
         --critic_lr <float>
             learning rate of critic  (default: 5e-4, fixed)
         --opti_eps <float>
-            RMSprop optimizer epsilon (default: 1e-5)
+            optimizer epsilon (default: 1e-5)
         --weight_decay <float>
-            coefficience of weight decay (default: 0)
+            coefficient of weight decay (default: 0)
     
     PPO parameters:
         --ppo_epoch <int>
@@ -176,12 +188,6 @@ def get_config():
             by default True, whether to mask useless data in value loss.  
         --huber_delta <float>
             coefficient of huber loss.  
-    
-    PPG parameters:
-        --aux_epoch <int>
-            number of auxiliary epochs. (default: 4)
-        --clone_coef <float>
-            clone term coefficient (default: 0.01)
     
     Run parameters：
         --use_linear_lr_decay
@@ -288,12 +294,18 @@ def get_config():
     parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet actor network")
     parser.add_argument("--gcmnet_scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet actor network")
     parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SCMU outputs in GCMNet actor network")
-    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=512, help="Hidden Size for MLP layers in GCMNet actor and critic network")
-    parser.add_argument("--gcmnet_n_fc_layers", type=int, default=3, help="Number of MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_n_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
     parser.add_argument("--gcmnet_k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
     parser.add_argument("--gcmnet_rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
     parser.add_argument("--gcmnet_rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
+    parser.add_argument("--gcmnet_dynamics", action='store_true', default=False, help="Whether to use dynamics models in GCMNet actor network")
+    parser.add_argument("--gcmnet_dynamics_reward", action='store_true', default=False, help="Whether to use dynamics models in GCMNet actor network to generate intrinsic exploration reward from disagreement via variance")
+    parser.add_argument("--gcmnet_dynamics_fc_output_dims", type=int, default=512, help="Hidden Size for MLP layers in dynamics models in GCMNet actor network")
+    parser.add_argument("--gcmnet_dynamics_n_fc_layers", type=int, default=2, help="Number of MLP layers in dynamics models in GCMNet actor network")
+    parser.add_argument("--gcmnet_dynamics_loss_coef", type=float, default=0.5, help="Coefficient for dynamics model loss")
+    parser.add_argument("--gcmnet_dynamics_reward_coef", type=float, default=1, help="Coefficient for intrinsic exploration reward from disagreement via variance")
 
     # mudmaf network parameters
     parser.add_argument("--mudmaf_conv_output_dims", type=int, default=256, help="Output dimensions for convolutions in MuDMAF network")
@@ -320,8 +332,9 @@ def get_config():
     parser.add_argument("--critic_lr", type=float, default=5e-4,
                         help='critic learning rate (default: 5e-4)')
     parser.add_argument("--opti_eps", type=float, default=1e-5,
-                        help='RMSprop optimizer epsilon (default: 1e-5)')
-    parser.add_argument("--weight_decay", type=float, default=1e-5)
+                        help='optimizer epsilon (default: 1e-5)')
+    parser.add_argument("--weight_decay", type=float, default=0,
+                        help='coefficient of weight decay')
 
     # ppo parameters
     parser.add_argument("--ppo_epoch", type=int, default=15,
@@ -347,7 +360,7 @@ def get_config():
     parser.add_argument("--gae_lambda", type=float, default=0.95,
                         help='gae lambda parameter (default: 0.95)')
     parser.add_argument("--use_proper_time_limits", action='store_true',
-                        default=True, help='compute returns taking into account time limits')
+                        default=False, help='compute returns taking into account time limits')
     parser.add_argument("--use_huber_loss", action='store_false', default=True, help="by default, use huber loss. If set, do not use huber loss.")
     parser.add_argument("--use_value_active_masks",
                         action='store_false', default=True, help="by default True, whether to mask useless data in value loss.")

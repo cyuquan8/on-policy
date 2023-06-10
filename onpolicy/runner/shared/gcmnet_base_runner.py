@@ -47,6 +47,11 @@ class GCMNetRunner(object):
         self.scmu_n_layers = self.all_args.gcmnet_scmu_n_layers
         self.scmu_lstm_hidden_size = self.all_args.gcmnet_scmu_lstm_hidden_size
 
+        # dynamics
+        self.dynamics = self.all_args.gcmnet_dynamics
+        self.dynamics_reward = self.all_args.gcmnet_dynamics_reward
+        assert not (self.dynamics == False and self.dynamics_reward == True), "Can't have dynamics reward w/o dynamics"
+
         # interval
         self.save_interval = self.all_args.save_interval
         self.use_eval = self.all_args.use_eval

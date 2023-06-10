@@ -394,7 +394,7 @@ class ShareSubprocVecEnv(ShareVecEnv):
         self.closed = True
 
 
-def availableactionsworker(remote, parent_remote, env_fn_wrapper):
+def availableactionsresetseedworker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
     env = env_fn_wrapper.x()
     while True:
@@ -403,14 +403,14 @@ def availableactionsworker(remote, parent_remote, env_fn_wrapper):
             ob, reward, done, info, available_actions = env.step(data)
             if 'bool' in done.__class__.__name__:
                 if done:
-                    ob, available_actions = env.reset()
+                    ob, available_actions = env.reset(seed=env.seed)
             else:
                 if np.all(done):
-                    ob, available_actions = env.reset()
+                    ob, available_actions = env.reset(seed=env.seed)
 
             remote.send((ob, reward, done, info, available_actions))
         elif cmd == 'reset':
-            ob, available_actions = env.reset()
+            ob, available_actions = env.reset(seed=env.seed)
             remote.send((ob, available_actions))
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -432,7 +432,7 @@ def availableactionsworker(remote, parent_remote, env_fn_wrapper):
             raise NotImplementedError
 
 
-class AvailableActionsSubprocVecEnv(ShareVecEnv):
+class AvailableActionsResetSeedSubprocVecEnv(ShareVecEnv):
     def __init__(self, env_fns, spaces=None):
         """
         envs: list of gym environments to run in subprocesses
@@ -441,7 +441,8 @@ class AvailableActionsSubprocVecEnv(ShareVecEnv):
         self.closed = False
         nenvs = len(env_fns)
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
-        self.ps = [Process(target=availableactionsworker, args=(work_remote, remote, CloudpickleWrapper(env_fn)))
+        self.ps = [Process(target=availableactionsresetseedworker, 
+                           args=(work_remote, remote, CloudpickleWrapper(env_fn)))
                    for (work_remote, remote, env_fn) in zip(self.work_remotes, self.remotes, env_fns)]
         for p in self.ps:
             p.daemon = True  # if the main process crashes, we should not cause things to hang
@@ -951,7 +952,7 @@ class ShareDummyVecEnv(ShareVecEnv):
             raise NotImplementedError
 
 
-class AvailableActionsDummyVecEnv(ShareVecEnv):
+class AvailableActionsResetSeedDummyVecEnv(ShareVecEnv):
     def __init__(self, env_fns):
         self.envs = [fn() for fn in env_fns]
         env = self.envs[0]
@@ -970,16 +971,16 @@ class AvailableActionsDummyVecEnv(ShareVecEnv):
         for (i, done) in enumerate(dones):
             if 'bool' in done.__class__.__name__:
                 if done:
-                    obs[i], available_actions[i] = self.envs[i].reset()
+                    obs[i], available_actions[i] = self.envs[i].reset(seed=self.envs[i].seed)
             else:
                 if np.all(done):
-                    obs[i], available_actions[i] = self.envs[i].reset()
+                    obs[i], available_actions[i] = self.envs[i].reset(seed=self.envs[i].seed)
         self.actions = None
 
         return obs, rews, dones, infos, available_actions
 
     def reset(self):
-        results = [env.reset() for env in self.envs]
+        results = [env.reset(seed=env.seed) for env in self.envs]
         obs, available_actions = map(np.array, zip(*results))
         return obs, available_actions
 

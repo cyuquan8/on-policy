@@ -78,29 +78,33 @@ class GCMNet_MAPPOPolicy:
         :return somu_cell_states_critic: (torch.Tensor) cell states for somu network.
         :return scmu_hidden_states_critic: (torch.Tensor) hidden states for scmu network.
         :return scmu_cell_states_critic: (torch.Tensor) hidden states for scmu network.
+        :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
         actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
-        scmu_hidden_states_actor, scmu_cell_states_actor = self.actor(obs,
-                                                                      somu_hidden_states_actor,
-                                                                      somu_cell_states_actor,
-                                                                      scmu_hidden_states_actor,
-                                                                      scmu_cell_states_actor,
-                                                                      masks, 
-                                                                      available_actions,
-                                                                      deterministic
-                                                                      )
-        
+        scmu_hidden_states_actor, scmu_cell_states_actor, obs_pred = \
+            self.actor(
+                obs=obs,
+                somu_hidden_states_actor=somu_hidden_states_actor,
+                somu_cell_states_actor=somu_cell_states_actor,
+                scmu_hidden_states_actor=scmu_hidden_states_actor,
+                scmu_cell_states_actor=scmu_cell_states_actor,
+                masks=masks, 
+                available_actions=available_actions,
+                deterministic=deterministic
+            )
         values, somu_hidden_states_critic, somu_cell_states_critic, \
-        scmu_hidden_states_critic, scmu_cell_states_critic = self.critic(cent_obs, 
-                                                                         somu_hidden_states_critic,
-                                                                         somu_cell_states_critic,
-                                                                         scmu_hidden_states_critic,
-                                                                         scmu_cell_states_critic, 
-                                                                         masks
-                                                                         )
+        scmu_hidden_states_critic, scmu_cell_states_critic = \
+            self.critic(
+                    cent_obs=cent_obs, 
+                    somu_hidden_states_critic=somu_hidden_states_critic,
+                    somu_cell_states_critic=somu_cell_states_critic,
+                    scmu_hidden_states_critic=scmu_hidden_states_critic,
+                    scmu_cell_states_critic=scmu_cell_states_critic, 
+                    masks=masks
+                )
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
+               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred
 
     def get_values(self, cent_obs, somu_hidden_states_critic, somu_cell_states_critic, 
                    scmu_hidden_states_critic, scmu_cell_states_critic, masks):
@@ -121,7 +125,7 @@ class GCMNet_MAPPOPolicy:
                                          scmu_hidden_states_critic,
                                          scmu_cell_states_critic, 
                                          masks
-                                         )
+                                        )
         return values
 
     def evaluate_actions(self, cent_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, 
@@ -149,26 +153,26 @@ class GCMNet_MAPPOPolicy:
         :return values: (torch.Tensor) value function predictions.
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
+        :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
-        action_log_probs, dist_entropy = self.actor.evaluate_actions(obs,
-                                                                     somu_hidden_states_actor,
-                                                                     somu_cell_states_actor,
-                                                                     scmu_hidden_states_actor,
-                                                                     scmu_cell_states_actor, 
-                                                                     action,
-                                                                     masks,
-                                                                     available_actions,
-                                                                     active_masks
-                                                                     )
-
+        action_log_probs, dist_entropy, obs_pred = self.actor.evaluate_actions(obs,
+                                                                               somu_hidden_states_actor,
+                                                                               somu_cell_states_actor,
+                                                                               scmu_hidden_states_actor,
+                                                                               scmu_cell_states_actor, 
+                                                                               action,
+                                                                               masks,
+                                                                               available_actions,
+                                                                               active_masks
+                                                                              )
         values = self.critic.evaluate_actions(cent_obs,
                                               somu_hidden_states_critic,
                                               somu_cell_states_critic,
                                               scmu_hidden_states_critic,
                                               scmu_cell_states_critic, 
                                               masks
-                                              )
-        return values, action_log_probs, dist_entropy
+                                             )
+        return values, action_log_probs, dist_entropy, obs_pred
 
     def act(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
             scmu_cell_states_actor, masks, available_actions=None, deterministic=False):
@@ -191,14 +195,14 @@ class GCMNet_MAPPOPolicy:
         :return scmu_cell_states_actor: (torch.Tensor) hidden states for scmu network.
         """
         actions, _ , somu_hidden_states_actor, somu_cell_states_actor, \
-        scmu_hidden_states_actor, scmu_cell_states_actor = self.actor(obs,
-                                                                      somu_hidden_states_actor,
-                                                                      somu_cell_states_actor,
-                                                                      scmu_hidden_states_actor,
-                                                                      scmu_cell_states_actor,
-                                                                      masks,  
-                                                                      available_actions, 
-                                                                      deterministic 
-                                                                      )
+        scmu_hidden_states_actor, scmu_cell_states_actor, _ = self.actor(obs,
+                                                                         somu_hidden_states_actor,
+                                                                         somu_cell_states_actor,
+                                                                         scmu_hidden_states_actor,
+                                                                         scmu_cell_states_actor,
+                                                                         masks,  
+                                                                         available_actions, 
+                                                                         deterministic 
+                                                                        )
         return actions, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor,

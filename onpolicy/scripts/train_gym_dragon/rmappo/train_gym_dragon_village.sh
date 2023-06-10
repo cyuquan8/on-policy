@@ -7,26 +7,26 @@ n_training_threads=1
 n_rollout_threads=16
 num_mini_batch=1
 num_env_steps=10000000000
-lr=0.0001   
-critic_lr=0.0001
+lr=0.0005   
+critic_lr=0.0005
 ppo_epoch=15
 clip_param=0.2
-n_eval_rollout_threads=16
+n_eval_rollout_threads=32
 
 episode_length=480
 region="village"
 recon_phase_length=0
 seconds_per_timestep=2.0
-
+    
 budget_weight_desert_perturbations=10 
 budget_weight_desert_communications=10 
-budget_weight_desert_communications=10 
+budget_weight_desert_bomb_additonal=10 
 budget_weight_forest_perturbations=10 
 budget_weight_forest_communications=10 
-budget_weight_forest_communications=10 
+budget_weight_forest_bomb_additonal=10 
 budget_weight_village_perturbations=10 
 budget_weight_village_communications=10 
-budget_weight_village_communications=10 
+budget_weight_village_bomb_additonal=10 
 
 explore_reward_weight=0.01
 inspect_reward_weight=0.01
@@ -39,7 +39,7 @@ exp="region_${region}_n_rollout_threads_${n_rollout_threads}_lr_${lr}_critic_lr_
 echo "env is ${env}, region is ${region}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 if [ "$seed_max" -eq 0 ]; then
     echo "seed is ${seed_max} (seed == None for reset() for gym_dragon):"
-    python ../../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
+    python ../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
     --region ${region} --seed ${seed_max} --user_name ${user} --n_training_threads ${n_training_threads}\
     --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
     --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
@@ -52,7 +52,6 @@ if [ "$seed_max" -eq 0 ]; then
     --include_explore_reward\
     --include_inspect_reward\
     --include_defusal_reward\
-    --include_beacon_reward\
     --include_proximity_reward\
     --explore_reward_weight ${explore_reward_weight}\
     --inspect_reward_weight ${inspect_reward_weight}\
@@ -108,7 +107,7 @@ else
     for seed in `seq ${seed_max}`;
     do
         echo "seed is ${seed}:"
-        python ../../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
+        python ../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
         --region ${region} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
         --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
         --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
@@ -121,7 +120,6 @@ else
         --include_explore_reward\
         --include_inspect_reward\
         --include_defusal_reward\
-        --include_beacon_reward\
         --include_proximity_reward\
         --explore_reward_weight ${explore_reward_weight}\
         --inspect_reward_weight ${inspect_reward_weight}\

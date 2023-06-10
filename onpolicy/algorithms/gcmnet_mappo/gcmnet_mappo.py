@@ -31,6 +31,8 @@ class GCMNet_MAPPO():
         self.huber_delta = args.huber_delta
         self.data_chunk_length = args.data_chunk_length
         self.num_agents = args.num_agents
+        self.dynamics = args.gcmnet_dynamics 
+        self.dynamics_loss_coef = args.gcmnet_dynamics_loss_coef
 
         self._use_recurrent_policy = args.use_recurrent_policy
         self._use_naive_recurrent = args.use_naive_recurrent_policy
@@ -104,6 +106,8 @@ class GCMNet_MAPPO():
         :return actor_grad_norm: (torch.Tensor) gradient norm from actor update.
         :return imp_weights: (torch.Tensor) importance sampling weights.
         """
+        # [shape: (mini_batch_size, data_chunk_length, num_agents, *)] for non-recurrent
+        # [shape: (mini_batch_size, num_agents, *)] for recurrent
         share_obs_batch, obs_batch, somu_hidden_states_actor_batch, somu_cell_states_actor_batch, \
         scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, somu_hidden_states_critic_batch, \
         somu_cell_states_critic_batch, scmu_hidden_states_critic_batch, scmu_cell_states_critic_batch, \
@@ -116,22 +120,28 @@ class GCMNet_MAPPO():
         return_batch = check(return_batch).to(**self.tpdv)
         active_masks_batch = check(active_masks_batch).to(**self.tpdv)
 
-        # Reshape to do in a single forward pass for all steps
-        values, action_log_probs, dist_entropy = self.policy.evaluate_actions(share_obs_batch,
-                                                                              obs_batch,
-                                                                              somu_hidden_states_actor_batch,
-                                                                              somu_cell_states_actor_batch,
-                                                                              scmu_hidden_states_actor_batch,
-                                                                              scmu_cell_states_actor_batch,
-                                                                              somu_hidden_states_critic_batch,
-                                                                              somu_cell_states_critic_batch,
-                                                                              scmu_hidden_states_critic_batch,
-                                                                              scmu_cell_states_critic_batch,
-                                                                              actions_batch, 
-                                                                              masks_batch, 
-                                                                              available_actions_batch,
-                                                                              active_masks_batch
-                                                                              )
+        # reshape to do in a single forward pass for all steps
+        # values [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
+        # action_log_probs [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
+        # dist_entropy [shape: () == scalar]
+        # obs_pred [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] / None
+        values, action_log_probs, dist_entropy, obs_pred = \
+            self.policy.evaluate_actions(
+                cent_obs=share_obs_batch,
+                obs=obs_batch,
+                somu_hidden_states_actor=somu_hidden_states_actor_batch,
+                somu_cell_states_actor=somu_cell_states_actor_batch,
+                scmu_hidden_states_actor=scmu_hidden_states_actor_batch,
+                scmu_cell_states_actor=scmu_cell_states_actor_batch,
+                somu_hidden_states_critic=somu_hidden_states_critic_batch,
+                somu_cell_states_critic=somu_cell_states_critic_batch,
+                scmu_hidden_states_critic=scmu_hidden_states_critic_batch,
+                scmu_cell_states_critic=scmu_cell_states_critic_batch,
+                action=actions_batch, 
+                masks=masks_batch, 
+                available_actions=available_actions_batch,
+                active_masks=active_masks_batch
+            )
 
         # reshape
         mini_batch_size = old_action_log_probs_batch.shape[0]
@@ -160,7 +170,22 @@ class GCMNet_MAPPO():
         else:
             policy_action_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
 
-        policy_loss = policy_action_loss
+        if self.dynamics:
+            obs_batch = check(obs_batch).to(**self.tpdv)
+            # reshape obs_pred [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]
+            obs_pred = obs_pred.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, -1)
+            # slice obs_batch and obs_pred accordingly such that the observations match
+            # select all but first observation from obs_batch (which is not predicted by dynamics model)
+            # select all but last observation from obs_pred (which does not exist in obs_batch)
+            obs_batch = obs_batch[:, 1:, :, :]
+            obs_pred = obs_pred[:, :-1, :, :]
+            # calculate loss
+            mse_loss = torch.nn.MSELoss()
+            dynamics_loss = mse_loss(obs_batch, obs_pred)
+            policy_loss = policy_action_loss + self.dynamics_loss_coef * dynamics_loss
+        else:
+            dynamics_loss = None
+            policy_loss = policy_action_loss
 
         self.policy.actor_optimizer.zero_grad()
         
@@ -188,7 +213,8 @@ class GCMNet_MAPPO():
 
         self.policy.critic_optimizer.step()
 
-        return value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights
+        return value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights, \
+               policy_action_loss, dynamics_loss
 
     def train(self, buffer, update_actor=True):
         """
@@ -217,6 +243,9 @@ class GCMNet_MAPPO():
         train_info['actor_grad_norm'] = 0
         train_info['critic_grad_norm'] = 0
         train_info['ratio'] = 0
+        if self.dynamics:
+            train_info['policy_action_loss'] = 0
+            train_info['dynamics_loss'] = 0
 
         for _ in range(self.ppo_epoch):
             if self._use_recurrent_policy:
@@ -228,7 +257,8 @@ class GCMNet_MAPPO():
 
             for sample in data_generator:
 
-                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights \
+                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights, \
+                policy_action_loss, dynamics_loss \
                     = self.ppo_update(sample, update_actor)
 
                 train_info['value_loss'] += value_loss.item()
@@ -237,6 +267,9 @@ class GCMNet_MAPPO():
                 train_info['actor_grad_norm'] += actor_grad_norm
                 train_info['critic_grad_norm'] += critic_grad_norm
                 train_info['ratio'] += imp_weights.mean()
+                if self.dynamics:
+                    train_info['policy_action_loss'] += policy_action_loss.item()
+                    train_info['dynamics_loss'] += dynamics_loss.item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 

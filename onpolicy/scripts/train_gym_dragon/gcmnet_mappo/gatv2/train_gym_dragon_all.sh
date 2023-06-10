@@ -13,7 +13,7 @@ ppo_epoch=15
 clip_param=0.2
 n_eval_rollout_threads=32
 
-gcmnet_gnn_architecture="gin"
+gcmnet_gnn_architecture="gatv2"
 gcmnet_gnn_output_dims=128  
 gcmnet_gnn_att_heads=4
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
@@ -57,7 +57,8 @@ beacon_reward_weight=0.01
 proximity_reward_weight=0.01
 
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
-n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_\
+gnn_att_heads_${gcmnet_gnn_att_heads}_\
+cpa_model_${gcmnet_cpa_model}_\
 n_gnn_layers_${gcmnet_n_gnn_layers}_\
 lr_${lr}_critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\

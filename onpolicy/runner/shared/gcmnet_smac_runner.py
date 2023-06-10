@@ -34,14 +34,15 @@ class GCMNetSMACRunner(GCMNetRunner):
                 # sample actions
                 values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                 scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = self.collect(step)
+                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred = \
+                    self.collect(step)
 
                 # observe reward and next obs
                 obs, share_obs, rewards, dones, infos, available_actions = self.envs.step(actions)
                 data = obs, share_obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                        scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-                       somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
+                       somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred
 
                 # insert data into buffer
                 self.insert(data)
@@ -121,20 +122,21 @@ class GCMNetSMACRunner(GCMNetRunner):
         
         value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic \
-        = self.trainer.policy.get_actions(self.buffer.share_obs[step],
-                                          self.buffer.obs[step],
-                                          self.buffer.somu_hidden_states_actor[step],
-                                          self.buffer.somu_cell_states_actor[step],
-                                          self.buffer.scmu_hidden_states_actor[step],
-                                          self.buffer.scmu_cell_states_actor[step],
-                                          self.buffer.somu_hidden_states_critic[step],
-                                          self.buffer.somu_cell_states_critic[step],
-                                          self.buffer.scmu_hidden_states_critic[step],
-                                          self.buffer.scmu_cell_states_critic[step],
-                                          self.buffer.masks[step],
-                                          self.buffer.available_actions[step]
-                                          )
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred = \
+            self.trainer.policy.get_actions(
+                cent_obs=self.buffer.share_obs[step],
+                obs=self.buffer.obs[step],
+                somu_hidden_states_actor=self.buffer.somu_hidden_states_actor[step],
+                somu_cell_states_actor=self.buffer.somu_cell_states_actor[step],
+                scmu_hidden_states_actor=self.buffer.scmu_hidden_states_actor[step],
+                scmu_cell_states_actor=self.buffer.scmu_cell_states_actor[step],
+                somu_hidden_states_critic=self.buffer.somu_hidden_states_critic[step],
+                somu_cell_states_critic=self.buffer.somu_cell_states_critic[step],
+                scmu_hidden_states_critic=self.buffer.scmu_hidden_states_critic[step],
+                scmu_cell_states_critic=self.buffer.scmu_cell_states_critic[step],
+                masks=self.buffer.masks[step],
+                available_actions=self.buffer.available_actions[step]
+            )
 
         values = _t2n(value)
         actions = _t2n(action)
@@ -147,16 +149,17 @@ class GCMNetSMACRunner(GCMNetRunner):
         somu_cell_states_critic = _t2n(somu_cell_states_critic)
         scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic)
         scmu_cell_states_critic = _t2n(scmu_cell_states_critic)
+        obs_pred = _t2n(obs_pred) if obs_pred is not None else None
 
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
+               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred
 
     def insert(self, data):
         obs, share_obs, rewards, dones, infos, available_actions, \
         values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = data
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred = data
         
         dones_env = np.all(dones, axis=1)
 
@@ -200,10 +203,27 @@ class GCMNetSMACRunner(GCMNetRunner):
         if not self.use_centralized_V:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor,
-                           scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, 
-                           scmu_hidden_states_critic, scmu_cell_states_critic, actions, action_log_probs, values, 
-                           rewards, masks, bad_masks, active_masks, available_actions)
+        self.buffer.insert(
+            share_obs=share_obs, 
+            obs=obs, 
+            somu_hidden_states_actor=somu_hidden_states_actor, 
+            somu_cell_states_actor=somu_cell_states_actor, 
+            scmu_hidden_states_actor=scmu_hidden_states_actor,
+            scmu_cell_states_actor=scmu_cell_states_actor, 
+            somu_hidden_states_critic=somu_hidden_states_critic, 
+            somu_cell_states_critic=somu_cell_states_critic, 
+            scmu_hidden_states_critic=scmu_hidden_states_critic, 
+            scmu_cell_states_critic=scmu_cell_states_critic, 
+            actions=actions, 
+            action_log_probs=action_log_probs, 
+            value_preds=values, 
+            rewards=rewards, 
+            masks=masks, 
+            bad_masks=bad_masks, 
+            active_masks=active_masks, 
+            available_actions=available_actions,
+            obs_pred=obs_pred
+        )
 
     def log_train(self, train_infos, total_num_steps):
         train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)

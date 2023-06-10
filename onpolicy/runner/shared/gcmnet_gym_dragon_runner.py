@@ -16,7 +16,6 @@ class GCMNetGymDragonRunner(GCMNetRunner):
     def __init__(self, config):
         super(GCMNetGymDragonRunner, self).__init__(config)
         self.index_to_agent_id = {0: 'alpha', 1: 'bravo', 2: 'charlie'}
-        self.seed = None if config['all_args'].seed == 0 else config['all_args'].seed
 
     def run(self):
         self.warmup()
@@ -29,10 +28,10 @@ class GCMNetGymDragonRunner(GCMNetRunner):
                 self.trainer.policy.lr_decay(episode, episodes)
 
             for step in range(self.episode_length):
-                # Sample actions
+                # sample actions
                 values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                 scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env = \
+                somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env, obs_pred = \
                     self.collect(step)
 
                 # Observe reward and next obs
@@ -40,7 +39,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
                 data = obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                        scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-                       somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic
+                       somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred
 
                 # insert data into buffer
                 self.insert(data)
@@ -95,7 +94,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
 
     def warmup(self):
         # reset env
-        obs, available_actions= self.envs.reset(self.seed)
+        obs, available_actions= self.envs.reset()
 
         # replay buffer
         if self.use_centralized_V:
@@ -111,23 +110,24 @@ class GCMNetGymDragonRunner(GCMNetRunner):
     @torch.no_grad()
     def collect(self, step):
         self.trainer.prep_rollout()
-        
+
         value, action, action_log_prob, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic \
-        = self.trainer.policy.get_actions(self.buffer.share_obs[step],
-                                          self.buffer.obs[step],
-                                          self.buffer.somu_hidden_states_actor[step],
-                                          self.buffer.somu_cell_states_actor[step],
-                                          self.buffer.scmu_hidden_states_actor[step],
-                                          self.buffer.scmu_cell_states_actor[step],
-                                          self.buffer.somu_hidden_states_critic[step],
-                                          self.buffer.somu_cell_states_critic[step],
-                                          self.buffer.scmu_hidden_states_critic[step],
-                                          self.buffer.scmu_cell_states_critic[step],
-                                          self.buffer.masks[step],
-                                          self.buffer.available_actions[step]
-                                          )
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred = \
+            self.trainer.policy.get_actions(
+                cent_obs=self.buffer.share_obs[step],
+                obs=self.buffer.obs[step],
+                somu_hidden_states_actor=self.buffer.somu_hidden_states_actor[step],
+                somu_cell_states_actor=self.buffer.somu_cell_states_actor[step],
+                scmu_hidden_states_actor=self.buffer.scmu_hidden_states_actor[step],
+                scmu_cell_states_actor=self.buffer.scmu_cell_states_actor[step],
+                somu_hidden_states_critic=self.buffer.somu_hidden_states_critic[step],
+                somu_cell_states_critic=self.buffer.somu_cell_states_critic[step],
+                scmu_hidden_states_critic=self.buffer.scmu_hidden_states_critic[step],
+                scmu_cell_states_critic=self.buffer.scmu_cell_states_critic[step],
+                masks=self.buffer.masks[step],
+                available_actions=self.buffer.available_actions[step]
+            )
 
         values = _t2n(value)
         actions = _t2n(action)
@@ -140,6 +140,7 @@ class GCMNetGymDragonRunner(GCMNetRunner):
         somu_cell_states_critic = _t2n(somu_cell_states_critic)
         scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic)
         scmu_cell_states_critic = _t2n(scmu_cell_states_critic)
+        obs_pred = _t2n(obs_pred) if obs_pred is not None else None
 
         # rearrange actions to multiagentdict format for gym_dragon
         actions_env_list = []
@@ -152,13 +153,13 @@ class GCMNetGymDragonRunner(GCMNetRunner):
 
         return values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
                scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env
+               somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, actions_env, obs_pred
 
     def insert(self, data):
         obs, rewards, dones, infos, available_actions, \
         values, actions, action_log_probs, somu_hidden_states_actor, somu_cell_states_actor, \
         scmu_hidden_states_actor, scmu_cell_states_actor, somu_hidden_states_critic, \
-        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic = data
+        somu_cell_states_critic, scmu_hidden_states_critic, scmu_cell_states_critic, obs_pred = data
         
         dones_env = np.all(dones, axis=1)
 
@@ -197,15 +198,30 @@ class GCMNetGymDragonRunner(GCMNetRunner):
         else:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, \
-                           scmu_cell_states_actor, somu_hidden_states_critic, somu_cell_states_critic, \
-                           scmu_hidden_states_critic, scmu_cell_states_critic, actions, action_log_probs, values, \
-                           rewards, masks, available_actions=available_actions)
+        self.buffer.insert(
+            share_obs=share_obs, 
+            obs=obs, 
+            somu_hidden_states_actor=somu_hidden_states_actor, 
+            somu_cell_states_actor=somu_cell_states_actor, 
+            scmu_hidden_states_actor=scmu_hidden_states_actor,
+            scmu_cell_states_actor=scmu_cell_states_actor, 
+            somu_hidden_states_critic=somu_hidden_states_critic, 
+            somu_cell_states_critic=somu_cell_states_critic, 
+            scmu_hidden_states_critic=scmu_hidden_states_critic, 
+            scmu_cell_states_critic=scmu_cell_states_critic, 
+            actions=actions, 
+            action_log_probs=action_log_probs, 
+            value_preds=values, 
+            rewards=rewards, 
+            masks=masks,
+            available_actions=available_actions,
+            obs_pred=obs_pred
+        )
 
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode_rewards = []
-        eval_obs, eval_available_actions = self.eval_envs.reset(self.seed)
+        eval_obs, eval_available_actions = self.eval_envs.reset()
 
         eval_somu_hidden_states_actor = \
             np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 

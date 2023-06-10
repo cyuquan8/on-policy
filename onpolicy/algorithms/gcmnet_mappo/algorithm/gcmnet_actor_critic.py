@@ -13,7 +13,7 @@ from onpolicy.algorithms.utils.nn import (
 from onpolicy.algorithms.utils.popart import PopArt
 from onpolicy.algorithms.utils.single_act import SingleACTLayer
 from onpolicy.algorithms.utils.util import init, check, complete_graph_edge_index
-from onpolicy.utils.util import get_shape_from_obs_space
+from onpolicy.utils.util import get_shape_from_obs_space, get_shape_from_act_space
 from torch_geometric.data import Data, Batch
 from torch_geometric.nn import knn_graph
 
@@ -61,12 +61,16 @@ class GCMNetActor(nn.Module):
         self.k = args.gcmnet_k
         self.rni = args.gcmnet_rni
         self.rni_ratio = args.gcmnet_rni_ratio
+        self.dynamics = args.gcmnet_dynamics
+        self.dynamics_fc_output_dims = args.gcmnet_dynamics_fc_output_dims
+        self.dynamics_n_fc_layers = args.gcmnet_dynamics_n_fc_layers
 
         obs_shape = get_shape_from_obs_space(obs_space)
         if isinstance(obs_shape, (list, tuple)):
             self.obs_dims = obs_shape[0]
         else:
             self.obs_dims = obs_shape
+        self.act_dims = get_shape_from_act_space(action_space)
 
         self.rni_dims = round(self.obs_dims * self.rni_ratio)
 
@@ -157,6 +161,22 @@ class GCMNetActor(nn.Module):
                                   dropout_p=0, 
                                   weight_initialisation="orthogonal" if self._use_orthogonal else "default")
 
+        # dynamics models
+        if self.dynamics:
+            self.dynamics_list = \
+                nn.ModuleList([
+                    NNLayers(input_channels=self.scmu_input_dims + self.act_dims + \
+                                            (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
+                                            (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size, 
+                             block=MLPBlock, 
+                             output_channels=[self.obs_dims if i + 1 == self.dynamics_n_fc_layers else \
+                                              self.dynamics_fc_output_dims for i in range(self.dynamics_n_fc_layers)], 
+                             activation_func='relu', 
+                             dropout_p=0, 
+                             weight_initialisation="orthogonal" if self._use_orthogonal else "default")
+                    for _ in range(self.num_agents)
+                ])
+
         # shared final action layer for each agent
         self.act = SingleACTLayer(action_space, self.fc_output_dims, self._use_orthogonal, self._gain)
         
@@ -178,10 +198,11 @@ class GCMNetActor(nn.Module):
 
         :return actions: (torch.Tensor) actions to take.
         :return action_log_probs: (torch.Tensor) log probabilities of taken actions.
-        :return somu_hidden_states_actor: (np.ndarray / torch.Tensor) hidden states for somu network.
-        :return somu_cell_states_actor: (np.ndarray / torch.Tensor) cell states for somu network.
-        :return scmu_hidden_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu network.
-        :return scmu_cell_states_actor: (np.ndarray / torch.Tensor) hidden states for scmu network.
+        :return somu_hidden_states_actor: (torch.Tensor) hidden states for somu network.
+        :return somu_cell_states_actor: (torch.Tensor) cell states for somu network.
+        :return scmu_hidden_states_actor: (torch.Tensor) hidden states for scmu network.
+        :return scmu_cell_states_actor: (torch.Tensor) hidden states for scmu network.
+        :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
         if self.knn:
             # [shape: (batch_size, num_agents, obs_dims)]
@@ -228,13 +249,16 @@ class GCMNetActor(nn.Module):
         if available_actions is not None:
             # [shape: (batch_size, num_agents, action_space_dim)]
             available_actions = check(available_actions).to(**self.tpdv) 
-         # store somu and scmu hidden states and cell states, actions and action_log_probs
+        # store somu and scmu hidden states and cell states, actions and action_log_probs
         somu_lstm_hidden_states_list = []
         somu_lstm_cell_states_list = []
         scmu_lstm_hidden_states_list = []
         scmu_lstm_cell_states_list = []
         actions_list = []
         action_log_probs_list = []
+        # store observation predictions if dynamics models are used
+        if self.dynamics:
+            obs_pred_list = []
         
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
         # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
@@ -318,34 +342,50 @@ class GCMNetActor(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-            output = torch.cat((gnn_output[:, i, :], 
-                                somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                somu_att_output.reshape(batch_size, 
-                                                        2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
-                                scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                scmu_att_output.reshape(batch_size, 
-                                                        2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                               ),
-                               dim=-1)
-            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # concat_output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            concat_output = torch.cat((gnn_output[:, i, :], 
+                                       somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
+                                       somu_att_output.reshape(batch_size, 
+                                                               2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                                       scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                                       scmu_att_output.reshape(batch_size, 
+                                                               2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                                      ), 
+                                      dim=-1)
+            # concat_output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> fc_layers [shape: (batch_size, fc_output_dims)]
-            output = self.fc_layers(output)
-            # fc_layers --> act [shape: (batch_size, action_space_dim)]
-            actions, action_log_probs = self.act(output, available_actions[:, i, :] \
+            fc_output = self.fc_layers(concat_output)
+            # fc_layers --> act [shape: (batch_size, act_dims)]
+            actions, action_log_probs = self.act(fc_output, available_actions[:, i, :] \
                                                  if available_actions is not None else None, deterministic)
             # append actions and action_log_probs to respective lists
             actions_list.append(actions)
             action_log_probs_list.append(action_log_probs)
-       
-        # [shape: (batch_size, num_agents, action_space_dim)]
+            # get observation predictions if dynamic models are used
+            if self.dynamics:
+                # concatenate concat output with actions
+                # dynamics_input [shape: (batch_size, scmu_input_dims + act_dims\
+                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                dynamics_input = torch.cat((concat_output, actions), dim=-1)
+                # dynamics_input [shape: (batch_size, scmu_input_dims + act_dims\
+                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                # --> dynamics [shape: (batch_size, obs_dims)]
+                obs_pred = self.dynamics_list[i](dynamics_input)
+                # append obs_pred to list
+                obs_pred_list.append(obs_pred)
+        
+        # [shape: (batch_size, num_agents, act_dims)]
         # [shape: (batch_size, num_agents, somu_n_layers / scmu_n_layers, 
         #          somu_lstm_hidden_size / scmu_lstm_hidden_size)]
+        # [shape: (batch_size, num_agents, obs_dims)] / None
         return torch.stack(actions_list, dim=1), torch.stack(action_log_probs_list, dim=1), \
                torch.stack(somu_lstm_hidden_states_list, dim=1), torch.stack(somu_lstm_cell_states_list, dim=1), \
-               torch.stack(scmu_lstm_hidden_states_list, dim=1), torch.stack(scmu_lstm_cell_states_list, dim=1)
+               torch.stack(scmu_lstm_hidden_states_list, dim=1), torch.stack(scmu_lstm_cell_states_list, dim=1), \
+               torch.stack(obs_pred_list, dim=1) if self.dynamics else None
 
     def evaluate_actions(self, obs, somu_hidden_states_actor, somu_cell_states_actor, scmu_hidden_states_actor, 
                          scmu_cell_states_actor, action, masks, available_actions=None, active_masks=None):
@@ -364,6 +404,7 @@ class GCMNetActor(nn.Module):
 
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
+        :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
         if self.knn:
             # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims]   
@@ -449,6 +490,9 @@ class GCMNetActor(nn.Module):
         # store actions and actions_log_probs
         action_log_probs_list = []
         dist_entropy_list = []
+        # store observation predictions if dynamics models are used
+        if self.dynamics:
+            obs_pred_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
         # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
@@ -574,27 +618,27 @@ class GCMNetActor(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
-            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-            output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                somu_lstm_output,
-                                somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                        2 * self.somu_n_layers * self.somu_lstm_hidden_size),
-                                scmu_lstm_output, 
-                                scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                        2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                               ), 
-                               dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
-            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # concat_output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                       (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                                       somu_lstm_output,
+                                       somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                               2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                                       scmu_lstm_output, 
+                                       scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                               2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                                      ), 
+                                      dim=-1)
+            # concat_output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                       (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
-            output = self.fc_layers(output)
-            # fc_layers --> act [shape: (mini_batch_size * data_chunk_length, action_space_dim)], [shape: () == scalar]
+            fc_output = self.fc_layers(concat_output)
+            # fc_layers --> act [shape: (mini_batch_size * data_chunk_length, act_dims)], [shape: () == scalar]
             action_log_probs, dist_entropy = \
-                self.act.evaluate_actions(output, 
+                self.act.evaluate_actions(fc_output, 
                                           action[:, i, :], available_actions[:, i, :] \
                                           if available_actions is not None else None, 
                                           active_masks[:, i, :] \
@@ -602,11 +646,28 @@ class GCMNetActor(nn.Module):
             # append action_log_probs and dist_entropy to respective lists
             action_log_probs_list.append(action_log_probs)
             dist_entropy_list.append(dist_entropy)
+            # get observation predictions if dynamic models are used
+            if self.dynamics:
+                # concatenate concat output with actions
+                # dynamics_input [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + act_dims\
+                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                dynamics_input = torch.cat((concat_output, action[:, i, :]), dim=-1)
+                # dynamics_input [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + act_dims\
+                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                # --> dynamics [shape: (mini_batch_size * data_chunk_length, obs_dims)]
+                obs_pred = self.dynamics_list[i](dynamics_input)
+                # append obs_pred to list
+                obs_pred_list.append(obs_pred)
 
-        # [shape: (mini_batch_size * data_chunk_length * num_agents, action_space_dim)] and [shape: () == scalar]
+        # [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
+        # [shape: () == scalar]
+        # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] / None
         return torch.stack(action_log_probs_list, dim=1)\
                     .reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1), \
-               torch.stack(dist_entropy_list, dim=0).mean()
+               torch.stack(dist_entropy_list, dim=0).mean(), \
+               torch.stack(obs_pred_list, dim=1) if self.dynamics else None
 
 class GCMNetCritic(nn.Module):
     """
@@ -822,7 +883,7 @@ class GCMNetCritic(nn.Module):
         somu_lstm_cell_states_list = []
         scmu_lstm_hidden_states_list = []
         scmu_lstm_cell_states_list = []
-        output_list = []
+        fc_output_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
         # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
@@ -906,25 +967,25 @@ class GCMNetCritic(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-            output = torch.cat((gnn_output[:, i, :], 
-                                somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                somu_att_output.reshape(batch_size, 
-                                                        2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
-                                scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                scmu_att_output.reshape(batch_size, 
-                                                        2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                               ),
-                               dim=-1)
-            # output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # concat_output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            concat_output = torch.cat((gnn_output[:, i, :], 
+                                       somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
+                                       somu_att_output.reshape(batch_size, 
+                                                               2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                                       scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                                       scmu_att_output.reshape(batch_size, 
+                                                               2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                                      ), 
+                                      dim=-1)
+            # concat_output [shape: (batch_size, scmu_input_dims + (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> fc_layers [shape: (batch_size, fc_output_dims)]
-            output = self.fc_layers(output)
-            output_list.append(output)
+            fc_output = self.fc_layers(concat_output)
+            fc_output_list.append(fc_output)
         
         # [shape: (batch_size, num_agents * fc_output_dims)]
-        output = torch.stack(output_list, dim=1).reshape(batch_size, self.num_agents * self.fc_output_dims)
+        output = torch.stack(fc_output_list, dim=1).reshape(batch_size, self.num_agents * self.fc_output_dims)
         # output --> v_out [shape: (batch_size, num_agents, 1)]
         # repeat the same value function for each agent
         values = self.v_out(output).repeat(1, self.num_agents).reshape(batch_size, self.num_agents, 1)
@@ -1017,7 +1078,7 @@ class GCMNetCritic(nn.Module):
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
         # store output before v_out
-        output_list = []
+        fc_output_list = []
 
         # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
         # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
@@ -1143,28 +1204,28 @@ class GCMNetCritic(nn.Module):
                                                                 scmu_hidden_cell_states, 
                                                                 scmu_hidden_cell_states)[0]
             # concatenate outputs from gnn, somu and scmu 
-            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
-            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-            output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                somu_lstm_output,
-                                somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                        2 * self.somu_n_layers * self.somu_lstm_hidden_size),
-                                scmu_lstm_output, 
-                                scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                        2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                               ), 
-                               dim=-1)
-            # output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
-            #                 (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-            #                 (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            # concat_output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                       (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+            concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                                       somu_lstm_output,
+                                       somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                               2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                                       scmu_lstm_output, 
+                                       scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                               2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                                      ), 
+                                      dim=-1)
+            # concat_output [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + \
+            #                       (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+            #                       (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
             # --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
-            output = self.fc_layers(output)
-            output_list.append(output)
+            fc_output = self.fc_layers(concat_output)
+            fc_output_list.append(fc_output)
 
         # [shape: (mini_batch_size * data_chunk_length, num_agents * fc_output_dims)]
-        output = torch.stack(output_list, dim=1)\
+        output = torch.stack(fc_output_list, dim=1)\
                       .reshape(mini_batch_size * self.data_chunk_length, self.num_agents * self.fc_output_dims)
         # output --> v_out [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
         # repeat the same value function for each agent

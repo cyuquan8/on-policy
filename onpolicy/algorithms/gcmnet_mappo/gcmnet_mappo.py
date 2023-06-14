@@ -124,7 +124,7 @@ class GCMNet_MAPPO():
         # values [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
         # action_log_probs [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
         # dist_entropy [shape: () == scalar]
-        # obs_pred [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] / None
+        # obs_pred [shape: (mini_batch_size * data_chunk_length, num_agents, num_agents, obs_dims)] / None
         values, action_log_probs, dist_entropy, obs_pred = \
             self.policy.evaluate_actions(
                 cent_obs=share_obs_batch,
@@ -172,13 +172,21 @@ class GCMNet_MAPPO():
 
         if self.dynamics:
             obs_batch = check(obs_batch).to(**self.tpdv)
-            # reshape obs_pred [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]
-            obs_pred = obs_pred.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, -1)
+            # reshape obs_pred [shape: (mini_batch_size, data_chunk_length, num_agents, num_agents, obs_dims)]
+            obs_pred = obs_pred.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.num_agents, -1)
             # slice obs_batch and obs_pred accordingly such that the observations match
-            # select all but first observation from obs_batch (which is not predicted by dynamics model)
+            # select all but first observation from obs_batch (which is not predicted by dynamics model), repeat the
+            # observations num_agents times for each dynamics model and reshape
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)] -->
+            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, obs_dims)] -->
+            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents * obs_dims)] -->
+            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents, obs_dims)]
             # select all but last observation from obs_pred (which does not exist in obs_batch)
-            obs_batch = obs_batch[:, 1:, :, :]
-            obs_pred = obs_pred[:, :-1, :, :]
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, num_agents, obs_dims)] -->
+            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents, obs_dims)]
+            obs_batch = torch.tile(obs_batch[:, 1:, :, :], (1, 1, 1, self.num_agents))\
+                             .reshape(mini_batch_size, self.data_chunk_length - 1, self.num_agents, self.num_agents, -1)
+            obs_pred = obs_pred[:, :-1, :, :, :]
             # calculate loss
             mse_loss = torch.nn.MSELoss()
             dynamics_loss = mse_loss(obs_batch, obs_pred)

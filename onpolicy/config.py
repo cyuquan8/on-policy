@@ -127,7 +127,7 @@ def get_config():
         --gcmnet_dynamics_n_fc_layers
             Number of MLP layers in dynamics models in GCMNet actor network, (default: 2)
         --gcmnet_dynamics_loss_coef
-            Coefficient for dynamics model loss, (default: 0.5)
+            Coefficient for dynamics model loss, (default: 0.01)
         --gcmnet_dynamics_reward_coef
             Coefficient for intrinsic exploration reward from disagreement via variance, (default: 1)
 
@@ -304,7 +304,7 @@ def get_config():
     parser.add_argument("--gcmnet_dynamics_reward", action='store_true', default=False, help="Whether to use dynamics models in GCMNet actor network to generate intrinsic exploration reward from disagreement via variance")
     parser.add_argument("--gcmnet_dynamics_fc_output_dims", type=int, default=512, help="Hidden Size for MLP layers in dynamics models in GCMNet actor network")
     parser.add_argument("--gcmnet_dynamics_n_fc_layers", type=int, default=2, help="Number of MLP layers in dynamics models in GCMNet actor network")
-    parser.add_argument("--gcmnet_dynamics_loss_coef", type=float, default=0.5, help="Coefficient for dynamics model loss")
+    parser.add_argument("--gcmnet_dynamics_loss_coef", type=float, default=0.01, help="Coefficient for dynamics model loss")
     parser.add_argument("--gcmnet_dynamics_reward_coef", type=float, default=1, help="Coefficient for intrinsic exploration reward from disagreement via variance")
 
     # mudmaf network parameters

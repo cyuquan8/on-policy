@@ -32,7 +32,7 @@ gcmnet_k=1
 gcmnet_rni_ratio=0.2
 gcmnet_dynamics_fc_output_dims=128
 gcmnet_dynamics_n_fc_layers=2
-gcmnet_dynamics_loss_coef=0.5
+gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
 
 episode_length=480

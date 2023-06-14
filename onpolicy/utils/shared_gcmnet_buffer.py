@@ -29,7 +29,6 @@ class SharedGCMNetReplayBuffer(object):
         self._use_popart = args.use_popart
         self._use_valuenorm = args.use_valuenorm
         self._use_proper_time_limits = args.use_proper_time_limits
-        assert not (self.dynamics == False and self.dynamics_reward == True), "Can't have dynamics reward w/o dynamics"
 
         obs_shape = get_shape_from_obs_space(obs_space)
         share_obs_shape = get_shape_from_obs_space(cent_obs_space)
@@ -42,9 +41,14 @@ class SharedGCMNetReplayBuffer(object):
 
         self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, self.num_agents, *share_obs_shape),
                                   dtype=np.float32)
-        self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
+        self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, self.num_agents, *obs_shape), 
+                            dtype=np.float32)
         if self.dynamics:
-            self.obs_pred = np.zeros((self.episode_length, self.n_rollout_threads, num_agents, *obs_shape), 
+            self.obs_pred = np.zeros((self.episode_length, 
+                                      self.n_rollout_threads, 
+                                      self.num_agents, 
+                                      self.num_agents, 
+                                      *obs_shape), 
                                      dtype=np.float32)
         else:
             self.obs_pred = None
@@ -276,15 +280,16 @@ class SharedGCMNetReplayBuffer(object):
         """
         # whether to implement instrinsic exploration reward from dynamics models
         if self.dynamics and self.dynamics_reward:
-            # obtain feature wise variance between observation predictions from dynamics models from each agent
-            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, obs_shape)] --> 
-            # [shape: (self.episode_length, self.n_rollout_threads, 1, obs_shape)]
-            var = np.var(self.obs_pred, axis=-2, keepdims=True)
-            # calculate disagreement / variance reward via mean observation feature-wise
-            # [shape: (self.episode_length, self.n_rollout_threads, 1, obs_shape)] -->
-            # [shape: (self.episode_length, self.n_rollout_threads, 1, 1)]
+            # obtain feature wise variance between observation predictions for a particular agent from dynamics models 
+            # from each agent
+            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, num_agents, obs_shape)] --> 
+            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, obs_shape)]
+            var = np.var(self.obs_pred, axis=-2)
+            # calculate disagreement / variance reward via mean observation feature-wise unique to each agent
+            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, obs_shape)] -->
+            # [shape: (self.episode_length, self.n_rollout_threads, num_agents, 1)]
             var_rew = np.mean(var, axis=-1, keepdims=True)
-            # add disagreement / variance reward to existing reward broadcasted across each agent
+            # add disagreement / variance reward to existing reward
             self.rewards += self.dynamics_reward_coef * var_rew
 
         if self._use_proper_time_limits:

@@ -370,18 +370,29 @@ class GCMNetActor(nn.Module):
                 #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
                 #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
                 dynamics_input = torch.cat((concat_output, actions), dim=-1)
-                # dynamics_input [shape: (batch_size, scmu_input_dims + act_dims\
-                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-                # --> dynamics [shape: (batch_size, obs_dims)]
-                obs_pred = self.dynamics_list[i](dynamics_input)
+                # store observation predictions from each agent's dynamics model given particular agent's observations
+                # and actions
+                agent_obs_pred_list = []
+                # iterate over agents 
+                for j in range(self.num_agents):
+                    # dynamics_input [shape: (batch_size, scmu_input_dims + act_dims\
+                    #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                    #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                    # --> dynamics [shape: (batch_size, obs_dims)]
+                    agent_obs_pred = self.dynamics_list[j](dynamics_input)
+                    # append agent_obs_pred to list
+                    agent_obs_pred_list.append(agent_obs_pred)
+                # observation predictions from each agent's dynamics model given particular agent's observations and 
+                # actions
+                # [shape: (batch_size, num_agents, obs_dims)] 
+                obs_pred = torch.stack(agent_obs_pred_list, dim=1)
                 # append obs_pred to list
                 obs_pred_list.append(obs_pred)
         
         # [shape: (batch_size, num_agents, act_dims)]
         # [shape: (batch_size, num_agents, somu_n_layers / scmu_n_layers, 
         #          somu_lstm_hidden_size / scmu_lstm_hidden_size)]
-        # [shape: (batch_size, num_agents, obs_dims)] / None
+        # [shape: (batch_size, num_agents, num_agents, obs_dims)] / None
         return torch.stack(actions_list, dim=1), torch.stack(action_log_probs_list, dim=1), \
                torch.stack(somu_lstm_hidden_states_list, dim=1), torch.stack(somu_lstm_cell_states_list, dim=1), \
                torch.stack(scmu_lstm_hidden_states_list, dim=1), torch.stack(scmu_lstm_cell_states_list, dim=1), \
@@ -653,17 +664,28 @@ class GCMNetActor(nn.Module):
                 #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
                 #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
                 dynamics_input = torch.cat((concat_output, action[:, i, :]), dim=-1)
-                # dynamics_input [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + act_dims\
-                #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
-                #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
-                # --> dynamics [shape: (mini_batch_size * data_chunk_length, obs_dims)]
-                obs_pred = self.dynamics_list[i](dynamics_input)
+                # store observation predictions from each agent's dynamics model given particular agent's observations
+                # and actions
+                agent_obs_pred_list = []
+                # iterate over agents 
+                for j in range(self.num_agents):
+                    # dynamics_input [shape: (mini_batch_size * data_chunk_length, scmu_input_dims + act_dims\
+                    #                        (2 * somu_n_layers + 1) * somu_lstm_hidden_size + \
+                    #                        (2 * scmu_n_layers + 1) * scmu_lstm_hidden_size)]
+                    # --> dynamics [shape: (mini_batch_size * data_chunk_length, obs_dims)]
+                    agent_obs_pred = self.dynamics_list[j](dynamics_input)
+                    # append agent_obs_pred to list
+                    agent_obs_pred_list.append(agent_obs_pred)
+                # observation predictions from each agent's dynamics model given particular agent's observations and 
+                # actions
+                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
+                obs_pred = torch.stack(agent_obs_pred_list, dim=1)
                 # append obs_pred to list
                 obs_pred_list.append(obs_pred)
 
         # [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
         # [shape: () == scalar]
-        # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] / None
+        # [shape: (mini_batch_size * data_chunk_length, num_agents, num_agents, obs_dims)] / None
         return torch.stack(action_log_probs_list, dim=1)\
                     .reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1), \
                torch.stack(dist_entropy_list, dim=0).mean(), \

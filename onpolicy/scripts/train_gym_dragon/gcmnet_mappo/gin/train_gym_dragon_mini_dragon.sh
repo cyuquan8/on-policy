@@ -13,7 +13,7 @@ ppo_epoch=15
 clip_param=0.2
 eval_episodes=32
 
-gcmnet_gnn_architecture="dna_gatv2"
+gcmnet_gnn_architecture="gin"
 gcmnet_gnn_output_dims=64  
 gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
@@ -36,7 +36,7 @@ gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
 
 episode_length=480
-region="forest"
+region="mini_dragon"
 recon_phase_length=0
 seconds_per_timestep=2.0
 
@@ -57,8 +57,7 @@ beacon_reward_weight=0.01
 proximity_reward_weight=0.01
 
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
-gnn_att_heads_${gcmnet_gnn_att_heads}_\
-cpa_model_${gcmnet_cpa_model}_\
+n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_\
 n_gnn_layers_${gcmnet_n_gnn_layers}_\
 lr_${lr}_critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
@@ -101,8 +100,6 @@ if [ "$seed_max" -eq 0 ]; then
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
-    --include_fuse_bombs\
-    --include_chained_bombs\
     --include_explore_reward\
     --include_inspect_reward\
     --include_defusal_reward\
@@ -199,8 +196,6 @@ else
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\
-        --include_fuse_bombs\
-        --include_chained_bombs\
         --include_explore_reward\
         --include_inspect_reward\
         --include_defusal_reward\

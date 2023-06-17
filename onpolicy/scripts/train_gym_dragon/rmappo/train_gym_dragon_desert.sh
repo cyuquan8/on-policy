@@ -11,7 +11,7 @@ lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
 clip_param=0.2
-n_eval_rollout_threads=32
+eval_episodes=32
 
 episode_length=480
 region="desert"
@@ -43,7 +43,7 @@ if [ "$seed_max" -eq 0 ]; then
     --region ${region} --seed ${seed_max} --user_name ${user} --n_training_threads ${n_training_threads}\
     --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
     --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-    --clip_param ${clip_param} --use_eval --n_eval_rollout_threads ${n_eval_rollout_threads}\
+    --clip_param ${clip_param} --use_eval --eval_episodes ${eval_episodes}\
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
@@ -111,7 +111,7 @@ else
         --region ${region} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
         --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
         --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-        --clip_param ${clip_param} --use_eval --n_eval_rollout_threads ${n_eval_rollout_threads}\
+        --clip_param ${clip_param} --use_eval --eval_episodes ${eval_episodes}\
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\

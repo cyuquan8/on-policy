@@ -1,5 +1,5 @@
 from gym_dragon.core.world import Region
-from gym_dragon.envs import DesertEnv, DragonEnv, ForestEnv, VillageEnv
+from gym_dragon.envs import DesertEnv, DragonEnv, ForestEnv, VillageEnv, MiniDragonEnv
 from gym_dragon.wrappers import (
     GymWrapper,
     ExploreReward,
@@ -113,6 +113,16 @@ def GymDragonEnv(args):
                          include_fuse_bombs=args.include_fuse_bombs,
                          include_fire_bombs=args.include_fire_bombs,
                          include_chained_bombs=args.include_chained_bombs)
+    elif args.region == 'mini_dragon':
+        env = MiniDragonEnv(mission_length=args.episode_length,
+                            recon_phase_length=args.recon_phase_length,
+                            seconds_per_timestep=args.seconds_per_timestep,
+                            obs_wrapper=obs_wrapper,
+                            budget_weights=budget_weights,
+                            color_tools_only=args.color_tools_only,
+                            include_fuse_bombs=args.include_fuse_bombs,
+                            include_fire_bombs=args.include_fire_bombs,
+                            include_chained_bombs=args.include_chained_bombs)
     
     env = reward_shapping_wrapper(env)
 

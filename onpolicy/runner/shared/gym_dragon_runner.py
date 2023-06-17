@@ -62,27 +62,9 @@ class GymDragonRunner(Runner):
                                 self.num_env_steps,
                                 int(total_num_steps / (end - start))))
 
-                if self.env_name == "gym_dragon":
-                    # env_infos = {}
-                    score_list = []
-                    for i in range(self.n_rollout_threads):
-                        score_list.append(infos[i][self.index_to_agent_id[0]]['score'])
-                    score_arr = np.array(score_list)
-                    mean_score = np.mean(score_arr)
-                    std_score = np.std(score_arr)
-                    print("mean score is {}.".format(mean_score))
-                    print("std score is {}.".format(std_score))
-                    if self.use_wandb:
-                        wandb.log({"mean score": mean_score}, step=total_num_steps)
-                        wandb.log({"std score": std_score}, step=total_num_steps)
-                    else:
-                        self.writter.add_scalars("mean score", {"mean score": mean_score}, total_num_steps)
-                        self.writter.add_scalars("std score", {"std score": std_score}, total_num_steps)
-
                 train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
                 print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 self.log_train(train_infos, total_num_steps)
-                # self.log_env(env_infos, total_num_steps)
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -153,21 +135,27 @@ class GymDragonRunner(Runner):
 
     @torch.no_grad()
     def eval(self, total_num_steps):
+        eval_episode = 0
+
         eval_episode_rewards = []
+        eval_episode_scores = []
+        one_episode_rewards = []
+
         eval_obs, eval_available_actions = self.eval_envs.reset()
 
         eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), 
                                    dtype=np.float32)
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
-        for eval_step in range(self.episode_length):
+        while True:
             self.trainer.prep_rollout()
-            eval_action, eval_rnn_states = self.trainer.policy.act(np.concatenate(eval_obs),
-                                                np.concatenate(eval_rnn_states),
-                                                np.concatenate(eval_masks),
-                                                available_actions=np.concatenate(eval_available_actions),
-                                                deterministic=True)
-            eval_actions = np.array(np.split(_t2n(eval_action), self.n_eval_rollout_threads))
+            eval_actions, eval_rnn_states = \
+                self.trainer.policy.act(np.concatenate(eval_obs),
+                                        np.concatenate(eval_rnn_states),
+                                        np.concatenate(eval_masks),
+                                        np.concatenate(eval_available_actions),
+                                        deterministic=True)
+            eval_actions = np.array(np.split(_t2n(eval_actions), self.n_eval_rollout_threads))
             eval_rnn_states = np.array(np.split(_t2n(eval_rnn_states), self.n_eval_rollout_threads))
 
             # rearrange actions to multiagentdict format for gym_dragon
@@ -182,34 +170,49 @@ class GymDragonRunner(Runner):
             # Obser reward and next obs
             eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = \
                 self.eval_envs.step(eval_actions_env)
-            eval_episode_rewards.append(eval_rewards)
+            one_episode_rewards.append(eval_rewards)
 
-            eval_rnn_states[eval_dones == True] = \
-                np.zeros(((eval_dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-            eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
-            eval_masks[eval_dones == True] = np.zeros(((eval_dones == True).sum(), 1), dtype=np.float32)
+            eval_dones_env = np.all(eval_dones, axis=1)
 
-        eval_score_list = []
-        for i in range(self.n_eval_rollout_threads):
-            eval_score_list.append(eval_infos[i][self.index_to_agent_id[0]]['score'])
-        eval_score_arr = np.array(eval_score_list)
-        eval_mean_score = np.mean(eval_score_arr)
-        eval_std_score = np.std(eval_score_arr)
-        print("eval mean score is {}.".format(eval_mean_score))
-        print("eval std score is {}.".format(eval_std_score))
-        if self.use_wandb:
-            wandb.log({"eval mean score": eval_mean_score}, step=total_num_steps)
-            wandb.log({"eval std score": eval_std_score}, step=total_num_steps)
-        else:
-            self.writter.add_scalars("eval mean score", {"eval mean score": eval_mean_score}, total_num_steps)
-            self.writter.add_scalars("eval std score", {"eval std score": eval_std_score}, total_num_steps)
+            eval_rnn_states[eval_dones_env == True] = \
+                np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), 
+                         dtype=np.float32)
 
-        eval_episode_rewards = np.array(eval_episode_rewards)
-        eval_env_infos = {}
-        eval_env_infos['eval_average_episode_rewards'] = np.sum(np.array(eval_episode_rewards), axis=0)
-        eval_average_episode_rewards = np.mean(eval_env_infos['eval_average_episode_rewards'])
-        print("eval average episode rewards of agent: " + str(eval_average_episode_rewards))
-        self.log_env(eval_env_infos, total_num_steps)
+            eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), 
+                                                          dtype=np.float32)
+
+            for eval_i in range(self.n_eval_rollout_threads):
+                if eval_dones_env[eval_i]:
+                    eval_episode += 1
+                    eval_episode_rewards.append(np.sum(one_episode_rewards, axis=0))
+                    one_episode_rewards = []
+                    eval_episode_scores.append(eval_infos[eval_i][self.index_to_agent_id[0]]['score'])
+
+            if eval_episode >= self.all_args.eval_episodes:
+                eval_episode_rewards = np.array(eval_episode_rewards)
+                eval_episode_scores = np.array(eval_episode_scores)
+                eval_average_episode_rewards = np.mean(eval_episode_rewards)
+                eval_average_episode_scores = np.mean(eval_episode_scores)
+                eval_std_episode_scores = np.std(eval_episode_scores)
+                print(f"eval average episode rewards: {eval_average_episode_rewards}")   
+                print(f"eval average score: {eval_average_episode_scores}")
+                print(f"eval std score: {eval_std_episode_scores}")
+                if self.use_wandb:
+                    wandb.log({"eval_average_episode_rewards": eval_average_episode_rewards}, step=total_num_steps)
+                    wandb.log({"eval_average_episode_scores": eval_average_episode_scores}, step=total_num_steps)
+                    wandb.log({"eval_std_episode_scores": eval_std_episode_scores}, step=total_num_steps)
+                else:
+                    self.writter.add_scalars("eval_average_episode_rewards", 
+                                             {"eval_average_episode_rewards": eval_average_episode_rewards}, 
+                                             total_num_steps)
+                    self.writter.add_scalars("eval_average_episode_scores", 
+                                             {"eval_average_episode_scores": eval_average_episode_scores}, 
+                                             total_num_steps)
+                    self.writter.add_scalars("eval_std_episode_scores", 
+                                             {"eval_std_episode_scores": eval_std_episode_scores}, 
+                                             total_num_steps)
+                break
 
     @torch.no_grad()
     def render(self):

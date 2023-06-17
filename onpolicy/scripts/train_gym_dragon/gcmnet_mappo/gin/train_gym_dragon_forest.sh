@@ -11,7 +11,7 @@ lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
 clip_param=0.2
-n_eval_rollout_threads=32
+eval_episodes=32
 
 gcmnet_gnn_architecture="gin"
 gcmnet_gnn_output_dims=64  
@@ -30,7 +30,7 @@ gcmnet_fc_output_dims=64
 gcmnet_n_fc_layers=2
 gcmnet_k=1
 gcmnet_rni_ratio=0.2
-gcmnet_dynamics_fc_output_dims=128
+gcmnet_dynamics_fc_output_dims=64
 gcmnet_dynamics_n_fc_layers=2
 gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
@@ -71,7 +71,7 @@ if [ "$seed_max" -eq 0 ]; then
     --region ${region} --seed ${seed_max} --user_name ${user} --n_training_threads ${n_training_threads}\
     --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
     --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-    --clip_param ${clip_param} --use_value_active_masks --use_eval --n_eval_rollout_threads ${n_eval_rollout_threads}\
+    --clip_param ${clip_param} --use_value_active_masks --use_eval --eval_episodes ${eval_episodes}\
     --gcmnet_gnn_architecture ${gcmnet_gnn_architecture}\
     --gcmnet_gnn_output_dims ${gcmnet_gnn_output_dims}\
     --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\
@@ -169,8 +169,7 @@ else
         --region ${region} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
         --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
         --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-        --clip_param ${clip_param} --use_value_active_masks --use_eval\
-        --n_eval_rollout_threads ${n_eval_rollout_threads}\
+        --clip_param ${clip_param} --use_value_active_masks --use_eval --eval_episodes ${eval_episodes}\
         --gcmnet_gnn_architecture ${gcmnet_gnn_architecture}\
         --gcmnet_gnn_output_dims ${gcmnet_gnn_output_dims}\
         --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\

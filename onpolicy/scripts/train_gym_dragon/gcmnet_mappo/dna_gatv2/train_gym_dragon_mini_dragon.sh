@@ -36,7 +36,7 @@ gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
 
 episode_length=480
-region="forest"
+region="mini_dragon"
 recon_phase_length=0
 seconds_per_timestep=2.0
 
@@ -101,8 +101,6 @@ if [ "$seed_max" -eq 0 ]; then
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
-    --include_fuse_bombs\
-    --include_chained_bombs\
     --include_explore_reward\
     --include_inspect_reward\
     --include_defusal_reward\
@@ -199,8 +197,6 @@ else
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\
-        --include_fuse_bombs\
-        --include_chained_bombs\
         --include_explore_reward\
         --include_inspect_reward\
         --include_defusal_reward\

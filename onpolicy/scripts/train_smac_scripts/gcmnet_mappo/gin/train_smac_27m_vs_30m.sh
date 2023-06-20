@@ -6,16 +6,18 @@ seed_max=1
 user="cyuquan8"
 n_training_threads=1
 n_rollout_threads=8
-num_mini_batch=1
-episode_length=400
 num_env_steps=10000000
+episode_length=400
+data_chunk_length=10
+num_mini_batch=32
 lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
 clip_param=0.2
+eval_episodes=32
 
 gcmnet_gnn_architecture="gin"
-gcmnet_gnn_output_dims=64   
+gcmnet_gnn_output_dims=64  
 gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
@@ -36,11 +38,14 @@ gcmnet_dynamics_n_fc_layers=2
 gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
 
-eval_episodes=32
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
 n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_\
 n_gnn_layers_${gcmnet_n_gnn_layers}_\
-lr_${lr}_critic_lr_${critic_lr}_\
+episode_length_${episode_length}_\
+data_chunk_length_${data_chunk_length}_\
+num_mini_batch_${num_mini_batch}_\
+lr_${lr}_\
+critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}"
 
@@ -50,9 +55,10 @@ do
     echo "seed is ${seed}:"
     python ../../../train/train_smac.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
     --map_name ${map} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
-    --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
-    --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-    --clip_param ${clip_param} --use_value_active_masks --use_eval --eval_episodes ${eval_episodes}\
+    --n_rollout_threads ${n_rollout_threads} --num_env_steps ${num_env_steps} --episode_length ${episode_length}\
+    --data_chunk_length ${data_chunk_length} --num_mini_batch ${num_mini_batch} --lr ${lr} --critic_lr ${critic_lr}\
+    --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_episodes ${eval_episodes} --use_value_active_masks\
+    --use_eval\
     --gcmnet_gnn_architecture ${gcmnet_gnn_architecture}\
     --gcmnet_gnn_output_dims ${gcmnet_gnn_output_dims}\
     --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\

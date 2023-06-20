@@ -204,10 +204,12 @@ class GCMNetGymDragonRunner(GCMNetRunner):
     @torch.no_grad()
     def eval(self, total_num_steps):
         eval_episode = 0
+        episode_length = [0 for _ in range(self.n_eval_rollout_threads)]
 
         eval_episode_rewards = []
         eval_episode_scores = []
-        one_episode_rewards = []
+        eval_episode_length = []
+        one_episode_rewards = [[] for _ in range(self.n_eval_rollout_threads)]
 
         eval_obs, eval_available_actions = self.eval_envs.reset()
 
@@ -256,7 +258,9 @@ class GCMNetGymDragonRunner(GCMNetRunner):
             # Observe reward and next obs
             eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(
                 eval_actions_env)
-            one_episode_rewards.append(eval_rewards)
+            for eval_i in range(self.n_eval_rollout_threads):
+                one_episode_rewards[eval_i].append(eval_rewards[eval_i])
+                episode_length[eval_i] += 1
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
@@ -291,23 +295,32 @@ class GCMNetGymDragonRunner(GCMNetRunner):
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:
                     eval_episode += 1
-                    eval_episode_rewards.append(np.sum(one_episode_rewards, axis=0))
-                    one_episode_rewards = []
+                    eval_episode_rewards.append(np.sum(one_episode_rewards[eval_i], axis=0))
+                    one_episode_rewards[eval_i] = []
                     eval_episode_scores.append(eval_infos[eval_i][self.index_to_agent_id[0]]['score'])
+                    eval_episode_length.append(episode_length[eval_i])
+                    episode_length[eval_i] = 0
 
             if eval_episode >= self.all_args.eval_episodes:
                 eval_episode_rewards = np.array(eval_episode_rewards)
                 eval_episode_scores = np.array(eval_episode_scores)
+                eval_episode_length = np.array(eval_episode_length)
                 eval_average_episode_rewards = np.mean(eval_episode_rewards)
                 eval_average_episode_scores = np.mean(eval_episode_scores)
                 eval_std_episode_scores = np.std(eval_episode_scores)
+                eval_average_episode_length = np.mean(eval_episode_length)
+                eval_std_episode_length = np.std(eval_episode_length)
                 print(f"eval average episode rewards: {eval_average_episode_rewards}")   
                 print(f"eval average score: {eval_average_episode_scores}")
                 print(f"eval std score: {eval_std_episode_scores}")
+                print(f"eval average episode length: {eval_average_episode_length}")
+                print(f"eval std episode length: {eval_std_episode_length}")
                 if self.use_wandb:
                     wandb.log({"eval_average_episode_rewards": eval_average_episode_rewards}, step=total_num_steps)
                     wandb.log({"eval_average_episode_scores": eval_average_episode_scores}, step=total_num_steps)
                     wandb.log({"eval_std_episode_scores": eval_std_episode_scores}, step=total_num_steps)
+                    wandb.log({"eval_average_episode_length": eval_average_episode_length}, step=total_num_steps)
+                    wandb.log({"eval_std_episode_length": eval_std_episode_length}, step=total_num_steps)
                 else:
                     self.writter.add_scalars("eval_average_episode_rewards", 
                                              {"eval_average_episode_rewards": eval_average_episode_rewards}, 
@@ -317,5 +330,11 @@ class GCMNetGymDragonRunner(GCMNetRunner):
                                              total_num_steps)
                     self.writter.add_scalars("eval_std_episode_scores", 
                                              {"eval_std_episode_scores": eval_std_episode_scores}, 
+                                             total_num_steps)
+                    self.writter.add_scalars("eval_average_episode_length", 
+                                             {"eval_average_episode_length": eval_average_episode_length}, 
+                                             total_num_steps)
+                    self.writter.add_scalars("eval_std_episode_length", 
+                                             {"eval_std_episode_length": eval_std_episode_length}, 
                                              total_num_steps)
                 break

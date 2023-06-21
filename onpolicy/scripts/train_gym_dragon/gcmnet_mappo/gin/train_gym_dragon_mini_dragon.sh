@@ -5,8 +5,9 @@ algo="gcmnet_mappo"
 user="cyuquan8"
 n_training_threads=1
 n_rollout_threads=8
-num_mini_batch=1
 num_env_steps=10000000000
+data_chunk_length=10
+num_mini_batch=1
 lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
@@ -59,7 +60,11 @@ proximity_reward_weight=0.01
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
 n_gin_fc_layers_${gcmnet_n_gin_fc_layers}_\
 n_gnn_layers_${gcmnet_n_gnn_layers}_\
-lr_${lr}_critic_lr_${critic_lr}_\
+episode_length_${episode_length}_\
+data_chunk_length_${data_chunk_length}_\
+num_mini_batch_${num_mini_batch}_\
+lr_${lr}_\
+critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}_\
 region_${region}"
@@ -69,9 +74,10 @@ if [ "$seed_max" -eq 0 ]; then
     echo "seed is ${seed_max} (seed == None for reset() for gym_dragon):"
     python ../../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
     --region ${region} --seed ${seed_max} --user_name ${user} --n_training_threads ${n_training_threads}\
-    --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
-    --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-    --clip_param ${clip_param} --use_value_active_masks --use_eval --eval_episodes ${eval_episodes}\
+    --n_rollout_threads ${n_rollout_threads} --num_env_steps ${num_env_steps} --episode_length ${episode_length}\
+    --data_chunk_length ${data_chunk_length} --num_mini_batch ${num_mini_batch} --lr ${lr} --critic_lr ${critic_lr}\
+    --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_episodes ${eval_episodes} --use_value_active_masks\
+    --use_eval\
     --gcmnet_gnn_architecture ${gcmnet_gnn_architecture}\
     --gcmnet_gnn_output_dims ${gcmnet_gnn_output_dims}\
     --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\
@@ -100,6 +106,8 @@ if [ "$seed_max" -eq 0 ]; then
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
+    --include_fuse_bombs\
+    --include_chained_bombs\
     --include_explore_reward\
     --include_inspect_reward\
     --include_defusal_reward\
@@ -164,10 +172,11 @@ else
     do
         echo "seed is ${seed}:"
         python ../../../train/train_gym_dragon.py --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp}\
-        --region ${region} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
-        --n_rollout_threads ${n_rollout_threads} --num_mini_batch ${num_mini_batch} --episode_length ${episode_length}\
-        --num_env_steps ${num_env_steps} --lr ${lr} --critic_lr ${critic_lr} --ppo_epoch ${ppo_epoch}\
-        --clip_param ${clip_param} --use_value_active_masks --use_eval --eval_episodes ${eval_episodes}\
+        --region ${region} --seed ${seed_max} --user_name ${user} --n_training_threads ${n_training_threads}\
+        --n_rollout_threads ${n_rollout_threads} --num_env_steps ${num_env_steps} --episode_length ${episode_length}\
+        --data_chunk_length ${data_chunk_length} --num_mini_batch ${num_mini_batch} --lr ${lr} --critic_lr ${critic_lr}\
+        --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_episodes ${eval_episodes} --use_value_active_masks\
+        --use_eval\
         --gcmnet_gnn_architecture ${gcmnet_gnn_architecture}\
         --gcmnet_gnn_output_dims ${gcmnet_gnn_output_dims}\
         --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\
@@ -196,6 +205,8 @@ else
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\
+        --include_fuse_bombs\
+        --include_chained_bombs\
         --include_explore_reward\
         --include_inspect_reward\
         --include_defusal_reward\

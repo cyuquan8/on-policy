@@ -1,10 +1,10 @@
 #!/bin/sh
-seed_max=0
+seed_max=1
 env="gym_dragon"
 algo="rmappo"
 user="cyuquan8"
 n_training_threads=1
-n_rollout_threads=16
+n_rollout_threads=32
 num_mini_batch=1
 num_env_steps=10000000000
 lr=0.0005   
@@ -47,10 +47,8 @@ if [ "$seed_max" -eq 0 ]; then
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
-    --include_explore_reward\
     --include_inspect_reward\
     --include_defusal_reward\
-    --include_proximity_reward\
     --explore_reward_weight ${explore_reward_weight}\
     --inspect_reward_weight ${inspect_reward_weight}\
     --defusal_reward_weight ${defusal_reward_weight}\
@@ -113,10 +111,8 @@ else
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\
-        --include_explore_reward\
         --include_inspect_reward\
         --include_defusal_reward\
-        --include_proximity_reward\
         --explore_reward_weight ${explore_reward_weight}\
         --inspect_reward_weight ${inspect_reward_weight}\
         --defusal_reward_weight ${defusal_reward_weight}\

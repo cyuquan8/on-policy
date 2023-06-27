@@ -4,13 +4,13 @@ env="gym_dragon"
 algo="gcmnet_mappo"
 user="cyuquan8"
 n_training_threads=1
-n_rollout_threads=8
+n_rollout_threads=32
 num_env_steps=10000000000
 data_chunk_length=10
-num_mini_batch=1
+num_mini_batch=5
 lr=0.0005
 critic_lr=0.0005
-ppo_epoch=15
+ppo_epoch=2
 clip_param=0.2
 eval_episodes=32
 
@@ -20,7 +20,7 @@ gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=4
-gcmnet_n_gin_fc_layers=2
+gcmnet_n_gnn_fc_layers=2
 gcmnet_somu_n_layers=4
 gcmnet_somu_lstm_hidden_size=64
 gcmnet_somu_multi_att_n_heads=8
@@ -86,7 +86,7 @@ if [ "$seed_max" -eq 0 ]; then
     --gcmnet_gnn_att_concat\
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
-    --gcmnet_n_gin_fc_layers ${gcmnet_n_gin_fc_layers}\
+    --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
     --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
     --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
     --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -129,6 +129,7 @@ if [ "$seed_max" -eq 0 ]; then
     --budget_weight_village_communications ${budget_weight_village_communications}\
     --budget_weight_village_bomb_additonal ${budget_weight_village_bomb_additonal}\
     # --gcmnet_gnn_att_concat\
+    # --gcmnet_train_eps\
     # --gcmnet_knn\
     # --gcmnet_dynamics\
     # --gcmnet_dynamics_reward\
@@ -185,7 +186,7 @@ else
         --gcmnet_gnn_att_concat\
         --gcmnet_cpa_model ${gcmnet_cpa_model}\
         --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
-        --gcmnet_n_gin_fc_layers ${gcmnet_n_gin_fc_layers}\
+        --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
         --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
         --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
         --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -228,6 +229,7 @@ else
         --budget_weight_village_communications ${budget_weight_village_communications}\
         --budget_weight_village_bomb_additonal ${budget_weight_village_bomb_additonal}\
         # --gcmnet_gnn_att_concat\
+        # --gcmnet_train_eps\
         # --gcmnet_knn\
         # --gcmnet_dynamics\
         # --gcmnet_dynamics_reward\

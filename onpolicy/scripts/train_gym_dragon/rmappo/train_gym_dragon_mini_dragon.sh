@@ -47,7 +47,6 @@ if [ "$seed_max" -eq 0 ]; then
     --recon_phase_length ${recon_phase_length}\
     --seconds_per_timestep ${seconds_per_timestep}\
     --color_tools_only\
-    --include_inspect_reward\
     --include_defusal_reward\
     --explore_reward_weight ${explore_reward_weight}\
     --inspect_reward_weight ${inspect_reward_weight}\
@@ -111,7 +110,6 @@ else
         --recon_phase_length ${recon_phase_length}\
         --seconds_per_timestep ${seconds_per_timestep}\
         --color_tools_only\
-        --include_inspect_reward\
         --include_defusal_reward\
         --explore_reward_weight ${explore_reward_weight}\
         --inspect_reward_weight ${inspect_reward_weight}\

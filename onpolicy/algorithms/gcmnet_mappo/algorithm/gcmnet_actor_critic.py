@@ -4,6 +4,7 @@ import torch.nn as nn
 from onpolicy.algorithms.utils.nn import (
     DNAGATv2Block,
     DNAGATv2Layers,
+    GAINBlock,
     GATv2Block,
     GINBlock, 
     GNNAllLayers, 
@@ -48,7 +49,8 @@ class GCMNetActor(nn.Module):
         self.gnn_att_concat = args.gcmnet_gnn_att_concat
         self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
-        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
+        self.n_gnn_fc_layers = args.gcmnet_n_gnn_fc_layers
+        self.train_eps = args.gcmnet_train_eps
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
@@ -109,7 +111,17 @@ class GCMNetActor(nn.Module):
             self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
                                            block=GINBlock, 
                                            output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           n_gin_fc_layers=self.n_gin_fc_layers)
+                                           n_gnn_fc_layers=self.n_gnn_fc_layers,
+                                           train_eps=self.train_eps)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
+        elif self.gnn_architecture == 'gain':
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GAINBlock, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                                           heads=self.gnn_att_heads, 
+                                           n_gnn_fc_layers=self.n_gnn_fc_layers)
             # calculate relevant input dimensions
             self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
                                    if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
@@ -721,7 +733,8 @@ class GCMNetCritic(nn.Module):
         self.gnn_att_concat = args.gcmnet_gnn_att_concat
         self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
-        self.n_gin_fc_layers = args.gcmnet_n_gin_fc_layers
+        self.n_gnn_fc_layers = args.gcmnet_n_gnn_fc_layers
+        self.train_eps = args.gcmnet_train_eps
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
@@ -778,7 +791,17 @@ class GCMNetCritic(nn.Module):
             self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
                                            block=GINBlock, 
                                            output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           n_gin_fc_layers=self.n_gin_fc_layers)
+                                           n_gnn_fc_layers=self.n_gnn_fc_layers,
+                                           train_eps=self.train_eps)
+            # calculate relevant input dimensions
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
+        elif self.gnn_architecture == 'gain':
+            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                                           block=GAINBlock, 
+                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                                           heads=self.gnn_att_heads, 
+                                           n_gnn_fc_layers=self.n_gnn_fc_layers)
             # calculate relevant input dimensions
             self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
                                    if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims

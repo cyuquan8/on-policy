@@ -25,45 +25,7 @@ from torch_geometric.utils.sparse import set_sparse_value
 
 
 class GATv2Conv(MessagePassing):
-    r"""The GATv2 operator from the `"How Attentive are Graph Attention
-    Networks?" <https://arxiv.org/abs/2105.14491>`_ paper, which fixes the
-    static attention problem of the standard
-    :class:`~torch_geometric.conv.GATConv` layer.
-    Since the linear layers in the standard GAT are applied right after each
-    other, the ranking of attended nodes is unconditioned on the query node.
-    In contrast, in :class:`GATv2`, every node can attend to any other node.
-
-    .. math::
-        \mathbf{x}^{\prime}_i = \alpha_{i,i}\mathbf{\Theta}\mathbf{x}_{i} +
-        \sum_{j \in \mathcal{N}(i)} \alpha_{i,j}\mathbf{\Theta}\mathbf{x}_{j},
-
-    where the attention coefficients :math:`\alpha_{i,j}` are computed as
-
-    .. math::
-        \alpha_{i,j} =
-        \frac{
-        \exp\left(\mathbf{a}^{\top}\mathrm{LeakyReLU}\left(\mathbf{\Theta}
-        [\mathbf{x}_i \, \Vert \, \mathbf{x}_j]
-        \right)\right)}
-        {\sum_{k \in \mathcal{N}(i) \cup \{ i \}}
-        \exp\left(\mathbf{a}^{\top}\mathrm{LeakyReLU}\left(\mathbf{\Theta}
-        [\mathbf{x}_i \, \Vert \, \mathbf{x}_k]
-        \right)\right)}.
-
-    If the graph has multi-dimensional edge features :math:`\mathbf{e}_{i,j}`,
-    the attention coefficients :math:`\alpha_{i,j}` are computed as
-
-    .. math::
-        \alpha_{i,j} =
-        \frac{
-        \exp\left(\mathbf{a}^{\top}\mathrm{LeakyReLU}\left(\mathbf{\Theta}
-        [\mathbf{x}_i \, \Vert \, \mathbf{x}_j \, \Vert \, \mathbf{e}_{i,j}]
-        \right)\right)}
-        {\sum_{k \in \mathcal{N}(i) \cup \{ i \}}
-        \exp\left(\mathbf{a}^{\top}\mathrm{LeakyReLU}\left(\mathbf{\Theta}
-        [\mathbf{x}_i \, \Vert \, \mathbf{x}_k \, \Vert \, \mathbf{e}_{i,k}]
-        \right)\right)}.
-
+    r"""
     Args:
         in_channels (int or tuple): Size of each input sample, or :obj:`-1` to
             derive the size from the first input(s) to the forward method.
@@ -100,21 +62,6 @@ class GATv2Conv(MessagePassing):
             (default: :obj:`False`)
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.MessagePassing`.
-
-    Shapes:
-        - **input:**
-          node features :math:`(|\mathcal{V}|, F_{in})` or
-          :math:`((|\mathcal{V_s}|, F_{s}), (|\mathcal{V_t}|, F_{t}))`
-          if bipartite,
-          edge indices :math:`(2, |\mathcal{E}|)`,
-          edge features :math:`(|\mathcal{E}|, D)` *(optional)*
-        - **output:** node features :math:`(|\mathcal{V}|, H * F_{out})` or
-          :math:`((|\mathcal{V}_t|, H * F_{out})` if bipartite.
-          If :obj:`return_attention_weights=True`, then
-          :math:`((|\mathcal{V}|, H * F_{out}),
-          ((2, |\mathcal{E}|), (|\mathcal{E}|, H)))`
-          or :math:`((|\mathcal{V_t}|, H * F_{out}), ((2, |\mathcal{E}|),
-          (|\mathcal{E}|, H)))` if bipartite
     """
     _alpha: OptTensor
 
@@ -136,6 +83,7 @@ class GATv2Conv(MessagePassing):
     ):
         super().__init__(node_dim=0, **kwargs)
 
+        # gatv2 attributes
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.heads = heads
@@ -148,6 +96,7 @@ class GATv2Conv(MessagePassing):
         self.share_weights = share_weights
         self.gnn_cpa_model = gnn_cpa_model
 
+        # linear layer for source and target nodes   
         if isinstance(in_channels, int):
             self.lin_l = Linear(in_channels, heads * out_channels, bias=bias,
                                 weight_initializer='glorot')
@@ -165,8 +114,10 @@ class GATv2Conv(MessagePassing):
                 self.lin_r = Linear(in_channels[1], heads * out_channels,
                                     bias=bias, weight_initializer='glorot')
 
+        # parameter layer post leaky relu that is node independent
         self.att = Parameter(torch.Tensor(1, heads, out_channels))
 
+        # linear layer for edge dimensions
         if edge_dim is not None:
             self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False,
                                    weight_initializer='glorot')
@@ -180,6 +131,7 @@ class GATv2Conv(MessagePassing):
         else:
             self.register_parameter('bias', None)
 
+        # attribute for attention score
         self._alpha = None
 
         self.reset_parameters()
@@ -210,25 +162,32 @@ class GATv2Conv(MessagePassing):
         """
         H, C = self.heads, self.out_channels
 
+        # pass source and target node embeddings to linear layers
         x_l: OptTensor = None
         x_r: OptTensor = None
         if isinstance(x, Tensor):
             assert x.dim() == 2
+            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
             x_l = self.lin_l(x).view(-1, H, C)
+            # same matrix applied to the source and the target node of every edge
             if self.share_weights:
                 x_r = x_l
             else:
+                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
                 x_r = self.lin_r(x).view(-1, H, C)
         else:
             x_l, x_r = x[0], x[1]
             assert x[0].dim() == 2
+            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
             x_l = self.lin_l(x_l).view(-1, H, C)
             if x_r is not None:
+                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
                 x_r = self.lin_r(x_r).view(-1, H, C)
 
         assert x_l is not None
         assert x_r is not None
 
+        # add self-loops
         if self.add_self_loops:
             if isinstance(edge_index, Tensor):
                 num_nodes = x_l.size(0)
@@ -248,17 +207,20 @@ class GATv2Conv(MessagePassing):
                         "simultaneously is currently not yet supported for "
                         "'edge_index' in a 'SparseTensor' form")
 
-        # propagate_type: (x: PairTensor, edge_attr: OptTensor)
+        # propagate_type: (x: PairTensor, edge_attr: OptTensor) [shape: num_nodes, att_heads, out_channels] 
         out = self.propagate(edge_index, x=(x_l, x_r), edge_attr=edge_attr,
                              size=None)
 
+        # update alpha to be returned if required
         alpha = self._alpha
         assert alpha is not None
         self._alpha = None
 
         if self.concat:
+            # [shape: num_nodes, att_heads * out_channels]
             out = out.view(-1, self.heads * self.out_channels)
         else:
+            # [shape: num_nodes, out_channels] 
             out = out.mean(dim=1)
 
         if self.bias is not None:
@@ -280,26 +242,50 @@ class GATv2Conv(MessagePassing):
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr: OptTensor,
                 index: Tensor, ptr: OptTensor,
                 size_i: Optional[int]) -> Tensor:
+        # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
+        # [shape: num_edges, att_heads, out_channels]
         x = x_i + x_j
 
+        # check if there are edge attributes
         if edge_attr is not None:
+            # check dimensions of edge dimensions
             if edge_attr.dim() == 1:
+                # resize if 1
                 edge_attr = edge_attr.view(-1, 1)
+            # ensure that there is linear layer for edges
             assert self.lin_edge is not None
+            # pass edge attributes to lin_edge
+            # [shape: num_edges, edge_dims] --> [shape: num_edges, att_heads * out_channels]
             edge_attr = self.lin_edge(edge_attr)
+            # [shape: num_edges, att_heads * out_channels] --> [num_edges, att_heads, out_channels]
             edge_attr = edge_attr.view(-1, self.heads, self.out_channels)
+            # 'emulate' concatentation to node embeddings
+            # [shape: num_edges, att_heads, out_channels]
             x = x + edge_attr
 
+        # pass node embeddings through leaky relu
         x = F.leaky_relu(x, self.negative_slope)
+        # multiply by node independent parameter layer. sum over out_channels.
+        # x [shape: num_edges, att_heads, out_channels], self.att [shape: 1, att_heads, out_channels] --> 
+        # alpha [shape: num_edges, att_heads]
         alpha = (x * self.att).sum(dim=-1)
+        # calculate softmaxed attention weights
+        # [shape: num_edges, att_heads]
         alpha = softmax(alpha, index, ptr, size_i)
+        # store attention weights
         self._alpha = alpha
+        # apply dropout to attention weights
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
+
+        # apply attention weights to source nodes
+        # [shape: num_edges, att_heads, out_channels] * [shape: num_edges, att_heads, 1] -->
+        # [shape: num_edges, att_heads, out_channels]
         if self.gnn_cpa_model == 'none':
+            # default implementation
             return x_j * alpha.unsqueeze(-1)
         elif self.gnn_cpa_model == 'f_additive':
+            # f_additive implementation that adds neighbour original feature vector
             return x_j * (alpha.unsqueeze(-1) + 1)
-
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '

@@ -275,6 +275,7 @@ class DNAGATv2Conv(MessagePassing):
             edge_dim: Optional[int] = None, 
             fill_value: Union[float, Tensor, str] = 'mean', 
             bias: bool = True,
+            share_weights: bool = False,
             gnn_cpa_model: str = 'none', 
             **kwargs
         ):
@@ -308,6 +309,8 @@ class DNAGATv2Conv(MessagePassing):
         self.edge_dim = edge_dim
         # fill value for edge attributes for self loops
         self.fill_value = fill_value
+        # whether to share weights for linear layer for source and target nodes
+        self.share_weights = share_weights
         # cardinality preserved attention model
         self.gnn_cpa_model = gnn_cpa_model
 
@@ -317,8 +320,13 @@ class DNAGATv2Conv(MessagePassing):
         # boolean to track if first propagation has been conducted
         self.first_prop = True
 
-        # linear layer for source nodes
-        self.lin = Linear(in_channels, att_heads * out_channels, bias=bias, weight_initializer='glorot')
+        # linear layer for source and target nodes
+        self.lin_l = Linear(in_channels, att_heads * out_channels, bias=bias, weight_initializer='glorot')
+        if share_weights:
+            self.lin_r = self.lin_l
+        else:
+            self.lin_r = Linear(in_channels, att_heads * out_channels, bias=bias, weight_initializer='glorot')
+
         # parameter layer post leaky relu that is node independent
         self.att = Parameter(torch.Tensor(1, att_heads, out_channels))
 
@@ -354,8 +362,10 @@ class DNAGATv2Conv(MessagePassing):
         """ 
         function to reset paremeters 
         """
+        super().reset_parameters()
         # reset parameters for linear layer
-        self.lin.reset_parameters()
+        self.lin_l.reset_parameters()
+        self.lin_r.reset_parameters()
 
         # check if there is linear layer for edge dimensions
         if self.lin_edge is not None:
@@ -395,12 +405,24 @@ class DNAGATv2Conv(MessagePassing):
         out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=None)
         # set first pass boolean
         self.first_prop = False
-    
-        # pass current node embedding to lin layer 
+        
+        # pass current source and target node embeddings to linear layer 
+        out_l: OptTensor = None
+        out_r: OptTensor = None
+        assert out.dim() == 2
         # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
-        out = self.lin(out).view(-1, self.att_heads, self.out_channels) 
+        out_l = self.lin_l(out).view(-1, self.att_heads, self.out_channels)
+        # same matrix applied to the source and the target node of every edge
+        if self.share_weights:
+            out_r = out_l
+        else:
+            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
+            out_r = self.lin_r(out).view(-1, self.att_heads, self.out_channels)
+        assert out_l is not None
+        assert out_r is not None
+
         # second propagate based on gatv2 [shape: num_nodes, att_heads, out_channels] 
-        out = self.propagate(edge_index, x=out, edge_attr=edge_attr, size=None)
+        out = self.propagate(edge_index, x=(out_l, out_r), edge_attr=edge_attr, size=None)
     
         # update alpha to be returned if required
         alpha = self._alpha
@@ -438,7 +460,6 @@ class DNAGATv2Conv(MessagePassing):
         # not first propagation (gatv2)
         else:
             # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
-            # assumes same att vector is applied to source, target and edge embeddings (slightly different from theory)
             # [shape: num_edges, att_heads, out_channels]
             x = x_i + x_j
            
@@ -473,12 +494,14 @@ class DNAGATv2Conv(MessagePassing):
             # apply dropout to attention weights
             alpha = F.dropout(alpha, p=self.dropout, training=self.training)
             
-            # apply attention weights to target nodes
+            # apply attention weights to source nodes
             # [shape: num_edges, att_heads, out_channels] * [shape: num_edges, att_heads, 1] -->
             # [shape: num_edges, att_heads, out_channels]
             if self.gnn_cpa_model == 'none':
+                # default implementation
                 return x_j * alpha.unsqueeze(-1)
             elif self.gnn_cpa_model == 'f_additive':
+                # f_additive implementation that adds neighbour original feature vector
                 return x_j * (alpha.unsqueeze(-1) + 1)
 
     def __repr__(self) -> str:

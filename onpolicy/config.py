@@ -92,8 +92,10 @@ def get_config():
             Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism, (default: 'f_additive')
         --gcmnet_n_gnn_layers <int>
             Number of GNN layers for GCMNet actor and critic network, (default: 2)
-        --gcmnet_n_gin_fc_layers <int>
-            Number of MLP layers in GCMNet GINConv (default: 2)
+        --gcmnet_n_gnn_fc_layers <int>
+            Number of MLP layers for MLP in suitable GNN architecture (GINConv, GAINConv), (default: 2)
+        --gcmnet_train_eps
+            Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv), (default: False)
         --gcmnet_somu_n_layers <int>
             Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network, (default: 2)
         --gcmnet_somu_lstm_hidden_size <int>
@@ -280,14 +282,15 @@ def get_config():
                         help="The gain # of last action layer")
 
     # gcmnet network parameters
-    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin", "gatv2"], help="Architecture for GNN layers in GCMNet")
+    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin", "gatv2", "gain"], help="Architecture for GNN layers in GCMNet")
     parser.add_argument("--gcmnet_gnn_output_dims", type=int, default=64, help="Hidden Size for GNN layers for actor and critic network")
     parser.add_argument("--gcmnet_gnn_att_heads", type=int, default=1, help="Number of attention heads for GNN architecture with suitable attention mechanism")
     parser.add_argument("--gcmnet_gnn_dna_gatv2_multi_att_heads", type=int, default=1, help="Number of attention heads for DNAGATv2 Multi-Head Attention for DNA")
     parser.add_argument("--gcmnet_gnn_att_concat", action='store_true', default=False, help="Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism")
     parser.add_argument("--gcmnet_gnn_cpa_model", type=str, default='f_additive', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism")
     parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=2, help="Number of GNN layers for GCMNet actor and critic network")
-    parser.add_argument("--gcmnet_n_gin_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet GINConv")
+    parser.add_argument("--gcmnet_n_gnn_fc_layers", type=int, default=2, help="Number of MLP layers for MLP in suitable GNN architecture (GINConv, GAINConv)")
+    parser.add_argument("--gcmnet_train_eps", action='store_true', default=False, help="Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv)")
     parser.add_argument("--gcmnet_somu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet actor network")
     parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet actor network")
     parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SOMU outputs in GCMNet actor network")

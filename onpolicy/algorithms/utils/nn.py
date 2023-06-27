@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch_geometric.nn as gnn
 
 from onpolicy.algorithms.utils.dna_gatv2_conv import DNAGATv2Conv
+from onpolicy.algorithms.utils.gain_conv import GAINConv
 from onpolicy.algorithms.utils.gatv2_conv import GATv2Conv
 
 def activation_function(activation):
@@ -198,7 +199,8 @@ class DNAGATv2Block(nn.Module):
     def __init__(
             self, 
             input_channels, 
-            output_channels, 
+            output_channels,
+            activation_func="relu", 
             att_heads=1, 
             mul_att_heads=1, 
             groups=1, 
@@ -208,7 +210,8 @@ class DNAGATv2Block(nn.Module):
             edge_dim=None, 
             fill_value='mean', 
             bias=True,
-            gnn_cpa_model='none'
+            gnn_cpa_model='none',
+            **kwargs
         ):
         """ 
         class constructor for attributes of the DNAGATv2Block 
@@ -219,6 +222,8 @@ class DNAGATv2Block(nn.Module):
         # input and output channels for DNAGATv2Conv 
         self.input_channels = input_channels
         self.output_channels = output_channels
+        # activation function
+        self.activation_func = activation_func
         # number of heads for gatv2 and multi head attention
         self.att_heads = att_heads
         self.mul_att_heads = mul_att_heads
@@ -243,14 +248,23 @@ class DNAGATv2Block(nn.Module):
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # DNAGATv2Conv block 
-                                        (DNAGATv2Conv(in_channels=input_channels, out_channels=output_channels, 
-                                                      att_heads=att_heads, mul_att_heads=mul_att_heads, groups=groups, 
-                                                      negative_slope=negative_slope, dropout=dropout, 
-                                                      add_self_loops=add_self_loops, edge_dim=edge_dim, 
-                                                      fill_value=fill_value, bias=bias, gnn_cpa_model=gnn_cpa_model), 
+                                        (DNAGATv2Conv(in_channels=input_channels, 
+                                                      out_channels=output_channels, 
+                                                      att_heads=att_heads, 
+                                                      mul_att_heads=mul_att_heads, 
+                                                      groups=groups, 
+                                                      negative_slope=negative_slope, 
+                                                      dropout=dropout, 
+                                                      add_self_loops=add_self_loops, 
+                                                      edge_dim=edge_dim, 
+                                                      fill_value=fill_value, 
+                                                      bias=bias, 
+                                                      gnn_cpa_model=gnn_cpa_model), 
                                          'x, edge_index -> x'), 
                                         # graph norm
-                                        (gnn.GraphNorm(self.output_channels), 'x -> x')
+                                        (gnn.GraphNorm(self.output_channels), 'x -> x'),
+                                        # activation func
+                                        activation_function(self.activation_func)
                                     ]
         )  
 
@@ -271,6 +285,7 @@ class GATv2Block(nn.Module):
             self, 
             input_channels,
             output_channels,
+            activation_func="relu",
             heads=1,
             concat=True,
             negative_slope=0.2,
@@ -289,9 +304,11 @@ class GATv2Block(nn.Module):
         # inherit class constructor attributes from nn.Module
         super().__init__()
 
-        # input and output channels for DNAGATv2Conv 
+        # input and output channels for GATv2Conv 
         self.input_channels = input_channels
         self.output_channels = output_channels
+        # activation function
+        self.activation_func = activation_func
         # number of heads for gatv2
         self.heads = heads
         # boolean that when set to false, the gatv2 multi-head attentions are averaged instead of concatenated
@@ -317,15 +334,24 @@ class GATv2Block(nn.Module):
         self.block = gnn.Sequential('x, edge_index', 
                                     [
                                         # GATv2Conv block 
-                                        (GATv2Conv(in_channels=input_channels, out_channels=output_channels, 
-                                                   heads=heads, concat=concat, negative_slope=negative_slope, 
-                                                   dropout=dropout, add_self_loops=add_self_loops, edge_dim=edge_dim, 
-                                                   fill_value=fill_value, bias=bias, share_weights=share_weights, 
+                                        (GATv2Conv(in_channels=input_channels, 
+                                                   out_channels=output_channels, 
+                                                   heads=heads, 
+                                                   concat=concat, 
+                                                   negative_slope=negative_slope, 
+                                                   dropout=dropout, 
+                                                   add_self_loops=add_self_loops, 
+                                                   edge_dim=edge_dim, 
+                                                   fill_value=fill_value, 
+                                                   bias=bias, 
+                                                   share_weights=share_weights, 
                                                    gnn_cpa_model=gnn_cpa_model), 
                                          'x, edge_index -> x'), 
                                         # graph norm
                                         (gnn.GraphNorm(self.output_channels * self.heads \
-                                                       if concat == True else self.output_channels), 'x -> x')
+                                                       if concat == True else self.output_channels), 'x -> x'),
+                                        # activation func
+                                        activation_function(self.activation_func)
                                     ]
         )  
 
@@ -342,8 +368,8 @@ class GINBlock(nn.Module):
     """
     block_type = "GINBlock"
 
-    def __init__(self, input_channels, output_channels, n_gin_fc_layers, activation_func="relu", eps=0.0, 
-                 train_eps=False, edge_dim=None):
+    def __init__(self, input_channels, output_channels, n_gnn_fc_layers, activation_func="relu", eps=0.0, 
+                 train_eps=False, edge_dim=None, **kwargs):
         """ 
         class constructor for attributes of the GINBlock 
         """
@@ -354,7 +380,7 @@ class GINBlock(nn.Module):
         self.input_channels = input_channels
         self.output_channels = output_channels
         # number of layers of MLP of GINConv
-        self.n_gin_fc_layers = n_gin_fc_layers
+        self.n_gnn_fc_layers = n_gnn_fc_layers
         # activation function
         self.activation_func = activation_func 
         # epsilon
@@ -367,7 +393,7 @@ class GINBlock(nn.Module):
         # list to store modules for Sequential
         modules = []
         # generate modules
-        for i in range(n_gin_fc_layers):
+        for i in range(self.n_gnn_fc_layers):
             # first layer
             if i == 0:
                 # linear hidden layer
@@ -383,11 +409,13 @@ class GINBlock(nn.Module):
         # generate MLP
         self.nn = nn.Sequential(*modules)
 
-        # basic dgcn_block. input --> gin --> graph norm
+        # basic GINBlock. input --> gin --> graph norm
         self.block = gnn.Sequential('x, edge_index', 
                                     [
-                                        # gine block 
-                                        (gnn.GINConv(nn=self.nn, eps=self.eps, train_eps=self.train_eps, 
+                                        # gin block 
+                                        (gnn.GINConv(nn=self.nn, 
+                                                     eps=self.eps, 
+                                                     train_eps=self.train_eps, 
                                                      edge_dim=self.edge_dim), 
                                          'x, edge_index -> x'), 
                                         # graph norm
@@ -402,11 +430,105 @@ class GINBlock(nn.Module):
         x = self.block(x, edge_index, *args, **kwargs)
         return x
 
+class GAINBlock(nn.Module):
+    """ 
+    class to build GAINBlock 
+    """
+    block_type = "GAINBlock"
+
+    def __init__(
+            self, 
+            input_channels,
+            output_channels,
+            activation_func="relu",
+            heads=1,
+            negative_slope=0.2,
+            dropout=0.0,
+            add_self_loops=True,
+            edge_dim=None,
+            fill_value='mean',
+            share_weights=False,
+            n_gnn_fc_layers=2,
+            **kwargs
+        ):
+        """ 
+        class constructor for attributes of the GAINBlock 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+
+        # input and output channels for DNAGATv2Conv 
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # activation function
+        self.activation_func = activation_func 
+        # number of heads for gatv2
+        self.heads = heads
+        # negative slope of leaky relu
+        self.negative_slope = negative_slope
+        # dropout probablity
+        self.dropout = dropout
+        # boolean to add self loops
+        self.add_self_loops = add_self_loops
+        # dimensions of edge attributes if any
+        self.edge_dim = edge_dim
+        # fill value for edge attributes for self loops
+        self.fill_value = fill_value
+        # whether to use same matrix for target and source nodes
+        self.share_weights = share_weights
+        # number of layers of MLP of GINConv
+        self.n_gnn_fc_layers = n_gnn_fc_layers
+
+        # list to store modules for Sequential
+        modules = []
+        # generate modules
+        for i in range(self.n_gnn_fc_layers):
+            # first layer
+            if i == 0:
+                # linear hidden layer
+                modules.append(nn.Linear(self.heads * self.output_channels, self.output_channels, bias=False))   
+            # subsequent layers
+            else:
+                # linear hidden layer
+                modules.append(nn.Linear(self.output_channels, self.output_channels, bias=False))
+            # layer norm
+            modules.append(nn.LayerNorm(self.output_channels))
+            # activation function
+            modules.append(activation_function(self.activation_func))
+        # generate MLP
+        self.nn = nn.Sequential(*modules)
+
+        # basic GAINBlock. input --> GAINConv --> graph norm
+        self.block = gnn.Sequential('x, edge_index', 
+                                    [
+                                        # GAINConv block 
+                                        (GAINConv(nn=self.nn,
+                                                  in_channels=input_channels, 
+                                                  out_channels=output_channels, 
+                                                  heads=heads, 
+                                                  negative_slope=negative_slope, 
+                                                  dropout=dropout, 
+                                                  add_self_loops=add_self_loops, 
+                                                  edge_dim=edge_dim, 
+                                                  fill_value=fill_value,  
+                                                  share_weights=share_weights), 
+                                         'x, edge_index -> x'), 
+                                        # graph norm
+                                        (gnn.GraphNorm(self.output_channels), 'x -> x')
+                                    ]
+        )  
+
+    def forward(self, x, edge_index, *args, **kwargs):
+        """ 
+        function for forward pass of GAINBlock 
+        """
+        x = self.block(x, edge_index, *args, **kwargs)
+        return x
+
 class NNLayers(nn.Module):
     """ 
     class to build layers of blocks
     """
-    
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):
         """ 
         class constructor for attributes of NNLayers 
@@ -456,7 +578,6 @@ class DNAGATv2Layers(NNLayers):
     class to build layers of DNAGATv2Conv blocks specfically. 
     DNAGATv2Conv is unique from other blocks as it requries past layers as its inputs
     """
-
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):
         """ 
         class constructor for attributes of DNAGATv2Layers 

@@ -483,14 +483,8 @@ class GAINBlock(nn.Module):
         modules = []
         # generate modules
         for i in range(self.n_gnn_fc_layers):
-            # first layer
-            if i == 0:
-                # linear hidden layer
-                modules.append(nn.Linear(self.heads * self.output_channels, self.output_channels, bias=False))   
-            # subsequent layers
-            else:
-                # linear hidden layer
-                modules.append(nn.Linear(self.output_channels, self.output_channels, bias=False))
+            # linear hidden layer
+            modules.append(nn.Linear(self.output_channels, self.output_channels, bias=False))
             # layer norm
             modules.append(nn.LayerNorm(self.output_channels))
             # activation function

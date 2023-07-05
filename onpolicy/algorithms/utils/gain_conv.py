@@ -91,6 +91,7 @@ class GAINConv(MessagePassing):
         self.edge_dim = edge_dim
         self.fill_value = fill_value
         self.share_weights = share_weights
+        assert self.in_channels == self.out_channels, "input and output channels must be of the same dimension"
 
         # linear layer for source and target nodes
         if isinstance(in_channels, int):
@@ -152,30 +153,17 @@ class GAINConv(MessagePassing):
                 :obj:`(edge_index, attention_weights)`, holding the computed
                 attention weights for each edge. (default: :obj:`None`)
         """
-        H, C = self.heads, self.out_channels
-
-        # pass source and target node embeddings to linear layers
+        # get source and target embeddings
         x_l: OptTensor = None
         x_r: OptTensor = None
         if isinstance(x, Tensor):
             assert x.dim() == 2
-            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
-            x_l = self.lin_l(x).view(-1, H, C)
-            # same matrix applied to the source and the target node of every edge
-            if self.share_weights:
-                x_r = x_l
-            else:
-                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
-                x_r = self.lin_r(x).view(-1, H, C)
+            # [shape: num_nodes, in_channels]
+            x_l = x
+            x_r = x
         else:
+            # [shape: num_nodes, in_channels]
             x_l, x_r = x[0], x[1]
-            assert x[0].dim() == 2
-            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
-            x_l = self.lin_l(x_l).view(-1, H, C)
-            if x_r is not None:
-                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, out_channels]
-                x_r = self.lin_r(x_r).view(-1, H, C)
-
         assert x_l is not None
         assert x_r is not None
 
@@ -200,13 +188,12 @@ class GAINConv(MessagePassing):
                         "'edge_index' in a 'SparseTensor' form")
 
         # propagate_type: (x: PairTensor, edge_attr: OptTensor) [shape: num_nodes, att_heads, out_channels]
-        out = self.propagate(edge_index, x=(x_l, x_r), edge_attr=edge_attr,
-                             size=None)
-        # add target embeddings [shape: num_nodes, att_heads, out_channels]
+        out = self.propagate(edge_index, x=(x_l, x_r), edge_attr=edge_attr, size=None)
+        # [shape: num_nodes, out_channels] 
+        out = out.mean(dim=1)
+        # add target embeddings [shape: num_nodes, in_channels==out_channels]
         out = x_r + out
-        # [shape: num_nodes, att_heads * out_channels]
-        out = out.reshape(-1, self.heads * self.out_channels)
-        # [shape: num_nodes, att_heads * out_channels] --> [shape: num_nodes, out_channels]
+        # [shape: num_nodes, out_channels] --> [shape: num_nodes, out_channels]
         out = self.nn(out)
 
         # update alpha to be returned if required
@@ -230,6 +217,11 @@ class GAINConv(MessagePassing):
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr: OptTensor,
                 index: Tensor, ptr: OptTensor,
                 size_i: Optional[int]) -> Tensor:
+        # pass source and target node embeddings to linear layers
+        # [shape: num_edges, in_channels] --> [shape: num_edges, att_heads, out_channels]
+        x_j = self.lin_l(x_j).view(-1, self.heads, self.out_channels)
+        x_i = self.lin_r(x_i).view(-1, self.heads, self.out_channels)
+
         # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
         # [shape: num_edges, att_heads, out_channels]
         x = x_i + x_j

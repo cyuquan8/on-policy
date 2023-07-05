@@ -119,12 +119,13 @@ class GCMNetActor(nn.Module):
         elif self.gnn_architecture == 'gain':
             self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
                                            block=GAINBlock, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                                           output_channels=[self.obs_dims + self.rni_dims if self.rni \
+                                                            else self.obs_dims for _ in range(self.n_gnn_layers)],
                                            heads=self.gnn_att_heads, 
                                            n_gnn_fc_layers=self.n_gnn_fc_layers)
             # calculate relevant input dimensions
-            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
-                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
+            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
+                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations
@@ -799,12 +800,13 @@ class GCMNetCritic(nn.Module):
         elif self.gnn_architecture == 'gain':
             self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
                                            block=GAINBlock, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                                           output_channels=[self.obs_dims + self.rni_dims if self.rni \
+                                                            else self.obs_dims for _ in range(self.n_gnn_layers)],
                                            heads=self.gnn_att_heads, 
                                            n_gnn_fc_layers=self.n_gnn_fc_layers)
             # calculate relevant input dimensions
-            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
-                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
+            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
+                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
 
         # list of lstms for self observation memory unit (somu) for each agent
         # somu_lstm_input_size is the dimension of the observations

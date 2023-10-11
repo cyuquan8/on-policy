@@ -100,7 +100,6 @@ if [ "$seed_max" -eq 0 ]; then
     --gcmnet_fc_output_dims ${gcmnet_fc_output_dims}\
     --gcmnet_n_fc_layers ${gcmnet_n_fc_layers}\
     --gcmnet_k ${gcmnet_k}\
-    --gcmnet_rni\
     --gcmnet_rni_ratio ${gcmnet_rni_ratio}\
     --gcmnet_dynamics\
     --gcmnet_dynamics_reward\
@@ -139,6 +138,7 @@ if [ "$seed_max" -eq 0 ]; then
     # --gcmnet_somu_critic\
     # --gcmnet_scmu_critic\
     # --gcmnet_knn\
+    # --gcmnet_rni\
     # --gcmnet_dynamics\
     # --gcmnet_dynamics_reward\
 
@@ -208,7 +208,6 @@ else
         --gcmnet_fc_output_dims ${gcmnet_fc_output_dims}\
         --gcmnet_n_fc_layers ${gcmnet_n_fc_layers}\
         --gcmnet_k ${gcmnet_k}\
-        --gcmnet_rni\
         --gcmnet_rni_ratio ${gcmnet_rni_ratio}\
         --gcmnet_dynamics\
         --gcmnet_dynamics_reward\
@@ -247,6 +246,7 @@ else
         # --gcmnet_somu_critic\
         # --gcmnet_scmu_critic\
         # --gcmnet_knn\
+        # --gcmnet_rni\
         # --gcmnet_dynamics\
         # --gcmnet_dynamics_reward\
 

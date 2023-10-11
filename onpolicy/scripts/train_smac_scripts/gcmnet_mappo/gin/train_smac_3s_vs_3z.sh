@@ -47,7 +47,7 @@ num_mini_batch_${num_mini_batch}_\
 lr_${lr}_\
 critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
-clip_param_${clip_param}_dyna_dyna_rew"
+clip_param_${clip_param}_somu_actor_scmu_actor_somu_critic_scmu_critic_dyna_dyna_rew"
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 for seed in `seq ${seed_max}`;
@@ -67,6 +67,10 @@ do
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+    --gcmnet_somu_actor\
+    --gcmnet_scmu_actor\
+    --gcmnet_somu_critic\
+    --gcmnet_scmu_critic\
     --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
     --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
     --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -86,6 +90,10 @@ do
     --gcmnet_dynamics_reward_coef ${gcmnet_dynamics_reward_coef}\
     # --gcmnet_gnn_att_concat\
     # --gcmnet_train_eps\
+    # --gcmnet_somu_actor\
+    # --gcmnet_scmu_actor\
+    # --gcmnet_somu_critic\
+    # --gcmnet_scmu_critic\
     # --gcmnet_knn\
     # --gcmnet_dynamics\
     # --gcmnet_dynamics_reward\

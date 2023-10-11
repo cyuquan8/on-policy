@@ -42,6 +42,10 @@ class GCMNetRunner(object):
 
         # gcmnet somu and scmu parameters
         assert 'gcmnet' in self.algorithm_name, f'algorithm name is {self.algorithm_name} and not gcmnet_mappo'
+        self.somu_actor = self.all_args.gcmnet_somu_actor
+        self.scmu_actor = self.all_args.gcmnet_scmu_actor
+        self.somu_critic = self.all_args.gcmnet_somu_critic
+        self.scmu_critic = self.all_args.gcmnet_scmu_critic
         self.somu_n_layers = self.all_args.gcmnet_somu_n_layers
         self.somu_lstm_hidden_size = self.all_args.gcmnet_somu_lstm_hidden_size
         self.scmu_n_layers = self.all_args.gcmnet_scmu_n_layers
@@ -149,13 +153,18 @@ class GCMNetRunner(object):
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
-        next_values = self.trainer.policy.get_values(self.buffer.share_obs[-1],
-                                                     self.buffer.somu_hidden_states_critic[-1],
-                                                     self.buffer.somu_cell_states_critic[-1],
-                                                     self.buffer.scmu_hidden_states_critic[-1],
-                                                     self.buffer.scmu_cell_states_critic[-1],
-                                                     self.buffer.masks[-1]
-                                                    )
+        next_values = self.trainer.policy.get_values(
+            cent_obs=self.buffer.share_obs[-1],
+            masks=self.buffer.masks[-1],
+            somu_hidden_states_critic=self.buffer.somu_hidden_states_critic[-1] \
+                if self.buffer.somu_hidden_states_critic is not None else None,
+            somu_cell_states_critic=self.buffer.somu_cell_states_critic[-1] \
+                if self.buffer.somu_cell_states_critic is not None else None,
+            scmu_hidden_states_critic=self.buffer.scmu_hidden_states_critic[-1] \
+                if self.buffer.scmu_hidden_states_critic is not None else None,
+            scmu_cell_states_critic=self.buffer.scmu_cell_states_critic[-1] \
+                if self.buffer.scmu_cell_states_critic is not None else None
+        )
         next_values = _t2n(next_values)
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
     

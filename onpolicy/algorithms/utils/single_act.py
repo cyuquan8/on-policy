@@ -156,7 +156,7 @@ class SingleACTLayer(nn.Module):
             action_logits = self.action_out(x, available_actions)
             action_log_probs = action_logits.log_probs(action)
             if active_masks is not None:
-                dist_entropy = action_logits.entropy()*active_masks.squeeze(-1).mean()
+                dist_entropy = (action_logits.entropy()[active_masks.squeeze(-1).bool()]).mean()
             else:
                 dist_entropy = action_logits.entropy().mean()
         

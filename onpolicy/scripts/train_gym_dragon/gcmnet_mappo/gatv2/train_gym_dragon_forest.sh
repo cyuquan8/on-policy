@@ -68,7 +68,7 @@ lr_${lr}_\
 critic_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}_\
-region_${region}"
+region_${region}_somu_actor_scmu_actor_somu_critic_scmu_critic_dyna_dyna_rew"
 
 echo "env is ${env}, region is ${region}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 if [ "$seed_max" -eq 0 ]; then
@@ -87,6 +87,10 @@ if [ "$seed_max" -eq 0 ]; then
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+    --gcmnet_somu_actor\
+    --gcmnet_scmu_actor\
+    --gcmnet_somu_critic\
+    --gcmnet_scmu_critic\
     --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
     --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
     --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -130,6 +134,10 @@ if [ "$seed_max" -eq 0 ]; then
     --budget_weight_village_bomb_additonal ${budget_weight_village_bomb_additonal}\
     # --gcmnet_gnn_att_concat\
     # --gcmnet_train_eps\
+    # --gcmnet_somu_actor\
+    # --gcmnet_scmu_actor\
+    # --gcmnet_somu_critic\
+    # --gcmnet_scmu_critic\
     # --gcmnet_knn\
     # --gcmnet_dynamics\
     # --gcmnet_dynamics_reward\
@@ -187,6 +195,10 @@ else
         --gcmnet_cpa_model ${gcmnet_cpa_model}\
         --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
         --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+        --gcmnet_somu_actor\
+        --gcmnet_scmu_actor\
+        --gcmnet_somu_critic\
+        --gcmnet_scmu_critic\
         --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
         --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
         --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -230,6 +242,10 @@ else
         --budget_weight_village_bomb_additonal ${budget_weight_village_bomb_additonal}\
         # --gcmnet_gnn_att_concat\
         # --gcmnet_train_eps\
+        # --gcmnet_somu_actor\
+        # --gcmnet_scmu_actor\
+        # --gcmnet_somu_critic\
+        # --gcmnet_scmu_critic\
         # --gcmnet_knn\
         # --gcmnet_dynamics\
         # --gcmnet_dynamics_reward\

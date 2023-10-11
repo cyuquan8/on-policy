@@ -31,6 +31,11 @@ class GCMNet_MAPPO():
         self.huber_delta = args.huber_delta
         self.data_chunk_length = args.data_chunk_length
         self.num_agents = args.num_agents
+
+        self.somu_actor = args.gcmnet_somu_actor
+        self.scmu_actor = args.gcmnet_scmu_actor
+        self.somu_critic = args.gcmnet_somu_critic
+        self.scmu_critic = args.gcmnet_scmu_critic
         self.dynamics = args.gcmnet_dynamics 
         self.dynamics_loss_coef = args.gcmnet_dynamics_loss_coef
 
@@ -106,56 +111,95 @@ class GCMNet_MAPPO():
         :return actor_grad_norm: (torch.Tensor) gradient norm from actor update.
         :return imp_weights: (torch.Tensor) importance sampling weights.
         """
-        # [shape: (mini_batch_size, data_chunk_length, num_agents, *)] for non-recurrent
-        # [shape: (mini_batch_size, num_agents, *)] for recurrent
-        share_obs_batch, obs_batch, somu_hidden_states_actor_batch, somu_cell_states_actor_batch, \
-        scmu_hidden_states_actor_batch, scmu_cell_states_actor_batch, somu_hidden_states_critic_batch, \
-        somu_cell_states_critic_batch, scmu_hidden_states_critic_batch, scmu_cell_states_critic_batch, \
-        actions_batch, value_preds_batch, return_batch, masks_batch, active_masks_batch, \
-        old_action_log_probs_batch, adv_targ, available_actions_batch = sample
+        if self.somu_actor == True or self.scmu_actor == True or self.somu_critic == True or self.scmu_critic == True:
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, *)] for recurrent
+            share_obs_batch, obs_batch, actions_batch, value_preds_batch, return_batch, masks_batch, \
+            active_masks_batch, old_action_log_probs_batch, adv_targ, available_actions_batch, \
+            somu_hidden_states_actor_batch, somu_cell_states_actor_batch, scmu_hidden_states_actor_batch, \
+            scmu_cell_states_actor_batch, somu_hidden_states_critic_batch, somu_cell_states_critic_batch, \
+            scmu_hidden_states_critic_batch, scmu_cell_states_critic_batch, obs_pred_mask_batch, \
+            obs_pred_target_batch = sample
 
-        old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
-        adv_targ = check(adv_targ).to(**self.tpdv)
-        value_preds_batch = check(value_preds_batch).to(**self.tpdv)
-        return_batch = check(return_batch).to(**self.tpdv)
-        active_masks_batch = check(active_masks_batch).to(**self.tpdv)
+            old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
+            adv_targ = check(adv_targ).to(**self.tpdv)
+            value_preds_batch = check(value_preds_batch).to(**self.tpdv)
+            return_batch = check(return_batch).to(**self.tpdv)
+            active_masks_batch = check(active_masks_batch).to(**self.tpdv)
 
-        # reshape to do in a single forward pass for all steps
-        # values [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
-        # action_log_probs [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
-        # dist_entropy [shape: () == scalar]
-        # obs_pred [shape: (mini_batch_size * data_chunk_length, num_agents, num_agents, obs_dims)] / None
-        values, action_log_probs, dist_entropy, obs_pred = \
-            self.policy.evaluate_actions(
-                cent_obs=share_obs_batch,
-                obs=obs_batch,
-                somu_hidden_states_actor=somu_hidden_states_actor_batch,
-                somu_cell_states_actor=somu_cell_states_actor_batch,
-                scmu_hidden_states_actor=scmu_hidden_states_actor_batch,
-                scmu_cell_states_actor=scmu_cell_states_actor_batch,
-                somu_hidden_states_critic=somu_hidden_states_critic_batch,
-                somu_cell_states_critic=somu_cell_states_critic_batch,
-                scmu_hidden_states_critic=scmu_hidden_states_critic_batch,
-                scmu_cell_states_critic=scmu_cell_states_critic_batch,
-                action=actions_batch, 
-                masks=masks_batch, 
-                available_actions=available_actions_batch,
-                active_masks=active_masks_batch
-            )
+            # values [shape: (mini_batch_size * data_chunk_length * num_agents, 1)]
+            # action_log_probs [shape: (mini_batch_size * data_chunk_length * num_agents, act_dims)]
+            # dist_entropy [shape: () == scalar]
+            # obs_pred [shape: (mini_batch_size * data_chunk_length, num_agents, num_agents, obs_dims)] / None
+            values, action_log_probs, dist_entropy, obs_pred = \
+                self.policy.evaluate_actions(
+                    cent_obs=share_obs_batch,
+                    obs=obs_batch,
+                    action=actions_batch, 
+                    masks=masks_batch, 
+                    available_actions=available_actions_batch,
+                    active_masks=active_masks_batch,
+                    somu_hidden_states_actor=somu_hidden_states_actor_batch,
+                    somu_cell_states_actor=somu_cell_states_actor_batch,
+                    scmu_hidden_states_actor=scmu_hidden_states_actor_batch,
+                    scmu_cell_states_actor=scmu_cell_states_actor_batch,
+                    somu_hidden_states_critic=somu_hidden_states_critic_batch,
+                    somu_cell_states_critic=somu_cell_states_critic_batch,
+                    scmu_hidden_states_critic=scmu_hidden_states_critic_batch,
+                    scmu_cell_states_critic=scmu_cell_states_critic_batch
+                )
 
-        # reshape
-        mini_batch_size = old_action_log_probs_batch.shape[0]
-        old_action_log_probs_batch = old_action_log_probs_batch.reshape(mini_batch_size *\
-                                                                        self.data_chunk_length *\
-                                                                        self.num_agents, -1)
-        adv_targ = adv_targ.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
-        value_preds_batch = value_preds_batch.reshape(mini_batch_size *\
-                                                      self.data_chunk_length *\
-                                                      self.num_agents, -1)
-        return_batch = return_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
-        active_masks_batch = active_masks_batch.reshape(mini_batch_size *\
-                                                        self.data_chunk_length *\
-                                                        self.num_agents, -1)
+            # reshape
+            mini_batch_size = old_action_log_probs_batch.shape[0]
+            old_action_log_probs_batch = \
+                old_action_log_probs_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+            adv_targ = adv_targ.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+            value_preds_batch = \
+                value_preds_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+            return_batch = return_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+            active_masks_batch = \
+                active_masks_batch.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, -1)
+
+        else:
+            # [shape: (mini_batch_size, num_agents, *)] for non-recurrent
+            share_obs_batch, obs_batch, actions_batch, value_preds_batch, return_batch, masks_batch, \
+            active_masks_batch, old_action_log_probs_batch, adv_targ, available_actions_batch, \
+            obs_pred_mask_batch, obs_pred_target_batch = sample
+
+            old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
+            adv_targ = check(adv_targ).to(**self.tpdv)
+            value_preds_batch = check(value_preds_batch).to(**self.tpdv)
+            return_batch = check(return_batch).to(**self.tpdv)
+            active_masks_batch = check(active_masks_batch).to(**self.tpdv)
+
+            # values [shape: (mini_batch_size * num_agents, 1)]
+            # action_log_probs [shape: (mini_batch_size * num_agents, act_dims)]
+            # dist_entropy [shape: () == scalar]
+            # obs_pred [shape: (mini_batch_size, num_agents, num_agents, obs_dims)] / None
+            values, action_log_probs, dist_entropy, obs_pred = \
+                self.policy.evaluate_actions(
+                    cent_obs=share_obs_batch,
+                    obs=obs_batch,
+                    action=actions_batch, 
+                    masks=masks_batch, 
+                    available_actions=available_actions_batch,
+                    active_masks=active_masks_batch,
+                    somu_hidden_states_actor=None,
+                    somu_cell_states_actor=None,
+                    scmu_hidden_states_actor=None,
+                    scmu_cell_states_actor=None,
+                    somu_hidden_states_critic=None,
+                    somu_cell_states_critic=None,
+                    scmu_hidden_states_critic=None,
+                    scmu_cell_states_critic=None
+                )
+
+            # reshape
+            mini_batch_size = old_action_log_probs_batch.shape[0]
+            old_action_log_probs_batch = old_action_log_probs_batch.reshape(mini_batch_size * self.num_agents, -1)
+            adv_targ = adv_targ.reshape(mini_batch_size * self.num_agents, -1)
+            value_preds_batch = value_preds_batch.reshape(mini_batch_size * self.num_agents, -1)
+            return_batch = return_batch.reshape(mini_batch_size * self.num_agents, -1)
+            active_masks_batch = active_masks_batch.reshape(mini_batch_size * self.num_agents, -1)
 
         # actor update
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
@@ -171,25 +215,23 @@ class GCMNet_MAPPO():
             policy_action_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
 
         if self.dynamics:
-            obs_batch = check(obs_batch).to(**self.tpdv)
-            # reshape obs_pred [shape: (mini_batch_size, data_chunk_length, num_agents, num_agents, obs_dims)]
-            obs_pred = obs_pred.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.num_agents, -1)
-            # slice obs_batch and obs_pred accordingly such that the observations match
-            # select all but first observation from obs_batch (which is not predicted by dynamics model), repeat the
-            # observations num_agents times for each dynamics model and reshape
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)] -->
-            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, obs_dims)] -->
-            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents * obs_dims)] -->
-            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents, obs_dims)]
-            # select all but last observation from obs_pred (which does not exist in obs_batch)
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, num_agents, obs_dims)] -->
-            # [shape: (mini_batch_size, data_chunk_length - 1, num_agents, num_agents, obs_dims)]
-            obs_batch = torch.tile(obs_batch[:, 1:, :, :], (1, 1, 1, self.num_agents))\
-                             .reshape(mini_batch_size, self.data_chunk_length - 1, self.num_agents, self.num_agents, -1)
-            obs_pred = obs_pred[:, :-1, :, :, :]
+            # obtain corresponding observations predictions given obs_pred_mask_batch,
+            # [shape: (mini_batch_size / mini_batch_size * data_chunk_length)] 
+            # non-recurrent: 
+            # [shape: (mini_batch_size, num_agents, num_agents, obs_dims)] --> 
+            # [shape: (D, num_agents, num_agents, obs_dims)]
+            # recurrent:
+            # [shape: (mini_batch_size * data_chunk_length, num_agents, num_agents, obs_dims)] --> 
+            # [shape: (D, num_agents, num_agents, obs_dims)]
+            obs_pred_batch = obs_pred[obs_pred_mask_batch]
+            # obtain target, [shape: (D, num_agents, obs_dims)] --> [shape: (D, 1, num_agents, obs_dims)]
+            obs_pred_target_batch = torch.unsqueeze(check(obs_pred_target_batch).to(**self.tpdv), 1)
+            # repeat target for each agent 
+            # [shape: (D, 1, num_agents, obs_dims)] --> [shape: (D, num_agents, num_agents, obs_dims)]
+            obs_pred_target_batch = torch.tile(obs_pred_target_batch, (1, self.num_agents, 1, 1))
             # calculate loss
             mse_loss = torch.nn.MSELoss()
-            dynamics_loss = mse_loss(obs_batch, obs_pred)
+            dynamics_loss = mse_loss(obs_pred_batch, obs_pred_target_batch)
             policy_loss = policy_action_loss + self.dynamics_loss_coef * dynamics_loss
         else:
             dynamics_loss = None
@@ -256,10 +298,9 @@ class GCMNet_MAPPO():
             train_info['dynamics_loss'] = 0
 
         for _ in range(self.ppo_epoch):
-            if self._use_recurrent_policy:
+            if self.somu_actor == True or self.scmu_actor == True or self.somu_critic == True or \
+               self.scmu_critic == True:
                 data_generator = buffer.recurrent_generator(advantages, self.num_mini_batch, self.data_chunk_length)
-            elif self._use_naive_recurrent:
-                data_generator = buffer.naive_recurrent_generator(advantages, self.num_mini_batch)
             else:
                 data_generator = buffer.feed_forward_generator(advantages, self.num_mini_batch)
 

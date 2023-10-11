@@ -100,29 +100,37 @@ class GCMNetGymDragonRunner(GCMNetRunner):
             self.trainer.policy.get_actions(
                 cent_obs=self.buffer.share_obs[step],
                 obs=self.buffer.obs[step],
-                somu_hidden_states_actor=self.buffer.somu_hidden_states_actor[step],
-                somu_cell_states_actor=self.buffer.somu_cell_states_actor[step],
-                scmu_hidden_states_actor=self.buffer.scmu_hidden_states_actor[step],
-                scmu_cell_states_actor=self.buffer.scmu_cell_states_actor[step],
-                somu_hidden_states_critic=self.buffer.somu_hidden_states_critic[step],
-                somu_cell_states_critic=self.buffer.somu_cell_states_critic[step],
-                scmu_hidden_states_critic=self.buffer.scmu_hidden_states_critic[step],
-                scmu_cell_states_critic=self.buffer.scmu_cell_states_critic[step],
                 masks=self.buffer.masks[step],
-                available_actions=self.buffer.available_actions[step]
+                available_actions=self.buffer.available_actions[step],
+                somu_hidden_states_actor=self.buffer.somu_hidden_states_actor[step] \
+                    if self.buffer.somu_hidden_states_actor is not None else None,
+                somu_cell_states_actor=self.buffer.somu_cell_states_actor[step] \
+                    if self.buffer.somu_cell_states_actor is not None else None,
+                scmu_hidden_states_actor=self.buffer.scmu_hidden_states_actor[step] \
+                    if self.buffer.scmu_hidden_states_actor is not None else None,
+                scmu_cell_states_actor=self.buffer.scmu_cell_states_actor[step] \
+                    if self.buffer.scmu_cell_states_actor is not None else None,
+                somu_hidden_states_critic=self.buffer.somu_hidden_states_critic[step] \
+                    if self.buffer.somu_hidden_states_critic is not None else None,
+                somu_cell_states_critic=self.buffer.somu_cell_states_critic[step] \
+                    if self.buffer.somu_cell_states_critic is not None else None,
+                scmu_hidden_states_critic=self.buffer.scmu_hidden_states_critic[step] \
+                    if self.buffer.scmu_hidden_states_critic is not None else None,
+                scmu_cell_states_critic=self.buffer.scmu_cell_states_critic[step] \
+                    if self.buffer.scmu_cell_states_critic is not None else None
             )
 
         values = _t2n(value)
         actions = _t2n(action)
         action_log_probs = _t2n(action_log_prob)
-        somu_hidden_states_actor = _t2n(somu_hidden_states_actor)
-        somu_cell_states_actor = _t2n(somu_cell_states_actor)
-        scmu_hidden_states_actor = _t2n(scmu_hidden_states_actor)
-        scmu_cell_states_actor = _t2n(scmu_cell_states_actor)
-        somu_hidden_states_critic = _t2n(somu_hidden_states_critic)
-        somu_cell_states_critic = _t2n(somu_cell_states_critic)
-        scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic)
-        scmu_cell_states_critic = _t2n(scmu_cell_states_critic)
+        somu_hidden_states_actor = _t2n(somu_hidden_states_actor) if somu_hidden_states_actor is not None else None
+        somu_cell_states_actor = _t2n(somu_cell_states_actor) if somu_cell_states_actor is not None else None
+        scmu_hidden_states_actor = _t2n(scmu_hidden_states_actor) if scmu_hidden_states_actor is not None else None
+        scmu_cell_states_actor = _t2n(scmu_cell_states_actor) if scmu_cell_states_actor is not None else None
+        somu_hidden_states_critic = _t2n(somu_hidden_states_critic) if somu_hidden_states_critic is not None else None
+        somu_cell_states_critic = _t2n(somu_cell_states_critic) if somu_cell_states_critic is not None else None
+        scmu_hidden_states_critic = _t2n(scmu_hidden_states_critic) if scmu_hidden_states_critic is not None else None
+        scmu_cell_states_critic = _t2n(scmu_cell_states_critic) if scmu_cell_states_critic is not None else None
         obs_pred = _t2n(obs_pred) if obs_pred is not None else None
 
         # rearrange actions to multiagentdict format for gym_dragon
@@ -149,31 +157,39 @@ class GCMNetGymDragonRunner(GCMNetRunner):
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
 
-        somu_hidden_states_actor[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        somu_cell_states_actor[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        scmu_hidden_states_actor[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                     dtype=np.float32)
-        scmu_cell_states_actor[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                     dtype=np.float32)
+        if somu_hidden_states_actor is not None:
+            somu_hidden_states_actor[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if somu_cell_states_actor is not None:
+            somu_cell_states_actor[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if scmu_hidden_states_actor is not None:
+            scmu_hidden_states_actor[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if scmu_cell_states_actor is not None:
+            scmu_cell_states_actor[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                         dtype=np.float32)
 
-        somu_hidden_states_critic[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        somu_cell_states_critic[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        scmu_hidden_states_critic[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                     dtype=np.float32)
-        scmu_cell_states_critic[dones_env == True] = \
-            np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                     dtype=np.float32)
+        if somu_hidden_states_critic is not None:
+            somu_hidden_states_critic[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if somu_cell_states_critic is not None:
+            somu_cell_states_critic[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if scmu_hidden_states_critic is not None:
+            scmu_hidden_states_critic[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                         dtype=np.float32)
+        if scmu_cell_states_critic is not None:
+            scmu_cell_states_critic[dones_env == True] = \
+                np.zeros(((dones_env == True).sum(), self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                         dtype=np.float32)
 
         if self.use_centralized_V:
             share_obs = obs.reshape(self.n_rollout_threads, -1)
@@ -184,6 +200,12 @@ class GCMNetGymDragonRunner(GCMNetRunner):
         self.buffer.insert(
             share_obs=share_obs, 
             obs=obs, 
+            actions=actions, 
+            action_log_probs=action_log_probs, 
+            value_preds=values, 
+            rewards=rewards, 
+            masks=masks,
+            available_actions=available_actions,
             somu_hidden_states_actor=somu_hidden_states_actor, 
             somu_cell_states_actor=somu_cell_states_actor, 
             scmu_hidden_states_actor=scmu_hidden_states_actor,
@@ -192,12 +214,6 @@ class GCMNetGymDragonRunner(GCMNetRunner):
             somu_cell_states_critic=somu_cell_states_critic, 
             scmu_hidden_states_critic=scmu_hidden_states_critic, 
             scmu_cell_states_critic=scmu_cell_states_critic, 
-            actions=actions, 
-            action_log_probs=action_log_probs, 
-            value_preds=values, 
-            rewards=rewards, 
-            masks=masks,
-            available_actions=available_actions,
             obs_pred=obs_pred
         )
 
@@ -213,38 +229,52 @@ class GCMNetGymDragonRunner(GCMNetRunner):
 
         eval_obs, eval_available_actions = self.eval_envs.reset()
 
-        eval_somu_hidden_states_actor = \
-            np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        eval_somu_cell_states_actor = \
-            np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
-                     dtype=np.float32)
-        eval_scmu_hidden_states_actor = \
-            np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                     dtype=np.float32)
-        eval_scmu_cell_states_actor = \
-            np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
-                      dtype=np.float32)
+        if self.somu_actor:
+            eval_somu_hidden_states_actor = \
+                np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+            eval_somu_cell_states_actor = \
+                np.zeros((self.n_eval_rollout_threads, self.num_agents, self.somu_n_layers, self.somu_lstm_hidden_size), 
+                         dtype=np.float32)
+        else:
+            eval_somu_hidden_states_actor = None
+            eval_somu_cell_states_actor = None
+        if self.scmu_actor:
+            eval_scmu_hidden_states_actor = \
+                np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                         dtype=np.float32)
+
+            eval_scmu_cell_states_actor = \
+                np.zeros((self.n_eval_rollout_threads, self.num_agents, self.scmu_n_layers, self.scmu_lstm_hidden_size), 
+                          dtype=np.float32)
+        else:
+            eval_scmu_hidden_states_actor = None
+            eval_scmu_cell_states_actor = None
         eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
         while True:
             self.trainer.prep_rollout()
             eval_actions, eval_somu_hidden_states_actor, eval_somu_cell_states_actor, eval_scmu_hidden_states_actor, \
-            eval_scmu_cell_states_actor = self.trainer.policy.act(eval_obs,
-                                                                  eval_somu_hidden_states_actor,
-                                                                  eval_somu_cell_states_actor,
-                                                                  eval_scmu_hidden_states_actor,
-                                                                  eval_scmu_cell_states_actor,
-                                                                  eval_masks,
-                                                                  available_actions=eval_available_actions,
-                                                                  deterministic=True
-                                                                  )
+            eval_scmu_cell_states_actor = self.trainer.policy.act(
+                obs=eval_obs,
+                masks=eval_masks,
+                available_actions=eval_available_actions,
+                somu_hidden_states_actor=eval_somu_hidden_states_actor,
+                somu_cell_states_actor=eval_somu_cell_states_actor,
+                scmu_hidden_states_actor=eval_scmu_hidden_states_actor,
+                scmu_cell_states_actor=eval_scmu_cell_states_actor,
+                deterministic=True
+            )
             
             eval_actions = _t2n(eval_actions)
-            eval_somu_hidden_states_actor = _t2n(eval_somu_hidden_states_actor)
-            eval_somu_cell_states_actor = _t2n(eval_somu_cell_states_actor)
-            eval_scmu_hidden_states_actor = _t2n(eval_scmu_hidden_states_actor)
-            eval_scmu_cell_states_actor = _t2n(eval_scmu_cell_states_actor)
+            eval_somu_hidden_states_actor = \
+                _t2n(eval_somu_hidden_states_actor) if eval_somu_hidden_states_actor is not None else None
+            eval_somu_cell_states_actor = \
+                _t2n(eval_somu_cell_states_actor) if eval_somu_cell_states_actor is not None else None
+            eval_scmu_hidden_states_actor = \
+                _t2n(eval_scmu_hidden_states_actor) if eval_scmu_hidden_states_actor is not None else None
+            eval_scmu_cell_states_actor = \
+                _t2n(eval_scmu_cell_states_actor) if eval_scmu_cell_states_actor is not None else None
 
             # rearrange actions to multiagentdict format for gym_dragon
             eval_actions_env_list = []
@@ -264,30 +294,34 @@ class GCMNetGymDragonRunner(GCMNetRunner):
 
             eval_dones_env = np.all(eval_dones, axis=1)
 
-            eval_somu_hidden_states_actor[eval_dones_env == True] = \
-                np.zeros(((eval_dones_env == True).sum(), 
-                           self.num_agents, 
-                           self.somu_n_layers, 
-                           self.somu_lstm_hidden_size), 
-                         dtype=np.float32)
-            eval_somu_cell_states_actor[eval_dones_env == True] = \
-                np.zeros(((eval_dones_env == True).sum(), 
-                           self.num_agents, 
-                           self.somu_n_layers, 
-                           self.somu_lstm_hidden_size), 
-                         dtype=np.float32)
-            eval_scmu_hidden_states_actor[eval_dones_env == True] = \
-                np.zeros(((eval_dones_env == True).sum(), 
-                           self.num_agents, 
-                           self.scmu_n_layers, 
-                           self.scmu_lstm_hidden_size), 
-                         dtype=np.float32)
-            eval_scmu_cell_states_actor[eval_dones_env == True] = \
-                np.zeros(((eval_dones_env == True).sum(), 
-                           self.num_agents, 
-                           self.scmu_n_layers, 
-                           self.scmu_lstm_hidden_size), 
-                         dtype=np.float32)
+            if eval_somu_hidden_states_actor is not None:
+                eval_somu_hidden_states_actor[eval_dones_env == True] = \
+                    np.zeros(((eval_dones_env == True).sum(), 
+                               self.num_agents, 
+                               self.somu_n_layers, 
+                               self.somu_lstm_hidden_size), 
+                             dtype=np.float32)
+            if eval_somu_cell_states_actor is not None:
+                eval_somu_cell_states_actor[eval_dones_env == True] = \
+                    np.zeros(((eval_dones_env == True).sum(), 
+                               self.num_agents, 
+                               self.somu_n_layers, 
+                               self.somu_lstm_hidden_size), 
+                             dtype=np.float32)
+            if eval_scmu_hidden_states_actor is not None:
+                eval_scmu_hidden_states_actor[eval_dones_env == True] = \
+                    np.zeros(((eval_dones_env == True).sum(), 
+                               self.num_agents, 
+                               self.scmu_n_layers, 
+                               self.scmu_lstm_hidden_size), 
+                             dtype=np.float32)
+            if eval_scmu_cell_states_actor is not None:
+                eval_scmu_cell_states_actor[eval_dones_env == True] = \
+                    np.zeros(((eval_dones_env == True).sum(), 
+                               self.num_agents, 
+                               self.scmu_n_layers, 
+                               self.scmu_lstm_hidden_size), 
+                             dtype=np.float32)
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), 
                                                           dtype=np.float32)

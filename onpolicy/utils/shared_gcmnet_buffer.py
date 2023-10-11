@@ -477,7 +477,7 @@ class SharedGCMNetReplayBuffer(object):
                 # obtain mask if selected states from indices are terminal states, [shape: (mini_batch_size,)]
                 terminal_state_batch = terminal_state[indices] 
                 # obtain mask if selected states from indices are at the end of the episode, [shape: (mini_batch_size,)]
-                episode_end_mask = (indices % (self.episode_length - 1) == 0) & (indices != 0)
+                episode_end_mask = (indices + 1) % self.episode_length == 0
                 # obtain mask with relevant observations, [shape: (mini_batch_size,)]
                 obs_pred_mask_batch = np.logical_not(terminal_state_batch | episode_end_mask)
                 # obtain indices with relevant observations, [shape: (D,)]
@@ -613,7 +613,7 @@ class SharedGCMNetReplayBuffer(object):
                     terminal_state_batch = terminal_state[selected_indices] 
                     # obtain mask if selected states from indices are at the end of the episode
                     # [shape: (data_chunk_length,)]
-                    episode_end_mask = (selected_indices % (self.episode_length - 1) == 0) & (selected_indices != 0)
+                    episode_end_mask = (selected_indices + 1) % self.episode_length == 0
                     # obtain mask with relevant observations, [shape: (data_chunk_length,)]
                     obs_pred_mask = np.logical_not(terminal_state_batch | episode_end_mask)
                     obs_pred_mask_batch.append(obs_pred_mask)

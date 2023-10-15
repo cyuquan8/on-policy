@@ -150,14 +150,15 @@ class GCMNetActor(nn.Module):
                                                          batch_first=True,
                                                          device=device)
                                                  for _ in range(self.num_agents)])
-            # multi-head self attention layer for somu to selectively choose between the lstms outputs
-            self.somu_multi_att_layer_list = \
-                nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
-                                                     num_heads=self.somu_multi_att_n_heads, 
-                                                     dropout=0, 
-                                                     batch_first=True, 
-                                                     device=device) 
-                               for _ in range(self.num_agents)])
+            if self.somu_att_actor:
+                # multi-head self attention layer for somu to selectively choose between the lstms outputs
+                self.somu_multi_att_layer_list = \
+                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
+                                                         num_heads=self.somu_multi_att_n_heads, 
+                                                         dropout=0, 
+                                                         batch_first=True, 
+                                                         device=device) 
+                                   for _ in range(self.num_agents)])
 
         if self.scmu_actor:
             # list of lstms for self communication memory unit (scmu) for each agent
@@ -168,14 +169,15 @@ class GCMNetActor(nn.Module):
                                                          batch_first=True,
                                                          device=device)
                                                  for _ in range(self.num_agents)])
-            # multi-head self attention layer for scmu to selectively choose between the lstms outputs
-            self.scmu_multi_att_layer_list = \
-                nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
-                                                     num_heads=self.scmu_multi_att_n_heads, 
-                                                     dropout=0, 
-                                                     batch_first=True, 
-                                                     device=device) 
-                               for _ in range(self.num_agents)])
+            if self.scmu_att_actor:
+                # multi-head self attention layer for scmu to selectively choose between the lstms outputs
+                self.scmu_multi_att_layer_list = \
+                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
+                                                         num_heads=self.scmu_multi_att_n_heads, 
+                                                         dropout=0, 
+                                                         batch_first=True, 
+                                                         device=device) 
+                                   for _ in range(self.num_agents)])
 
         # calculate input dimensions for fc layers
         if self.somu_actor == True and self.scmu_actor == True:
@@ -1175,14 +1177,15 @@ class GCMNetCritic(nn.Module):
                                                          batch_first=True,
                                                          device=device)
                                                  for _ in range(self.num_agents)])
-            # multi-head self attention layer for somu to selectively choose between the lstms outputs
-            self.somu_multi_att_layer_list = \
-                nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
-                                                     num_heads=self.somu_multi_att_n_heads, 
-                                                     dropout=0, 
-                                                     batch_first=True, 
-                                                     device=device) 
-                               for _ in range(self.num_agents)])
+            if self.somu_att_critic:
+                # multi-head self attention layer for somu to selectively choose between the lstms outputs
+                self.somu_multi_att_layer_list = \
+                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
+                                                         num_heads=self.somu_multi_att_n_heads, 
+                                                         dropout=0, 
+                                                         batch_first=True, 
+                                                         device=device) 
+                                   for _ in range(self.num_agents)])
 
         if self.scmu_critic:
             # list of lstms for self communication memory unit (scmu) for each agent
@@ -1193,14 +1196,15 @@ class GCMNetCritic(nn.Module):
                                                          batch_first=True,
                                                          device=device)
                                                  for _ in range(self.num_agents)])
-            # multi-head self attention layer for scmu to selectively choose between the lstms outputs
-            self.scmu_multi_att_layer_list = \
-                nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
-                                                     num_heads=self.scmu_multi_att_n_heads, 
-                                                     dropout=0, 
-                                                     batch_first=True, 
-                                                     device=device) 
-                               for _ in range(self.num_agents)])
+            if self.scmu_att_critic:
+                # multi-head self attention layer for scmu to selectively choose between the lstms outputs
+                self.scmu_multi_att_layer_list = \
+                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
+                                                         num_heads=self.scmu_multi_att_n_heads, 
+                                                         dropout=0, 
+                                                         batch_first=True, 
+                                                         device=device) 
+                                   for _ in range(self.num_agents)])
 
         # calculate input dimensions for fc layers
         if self.somu_critic == True and self.scmu_critic == True:
@@ -1369,18 +1373,19 @@ class GCMNetCritic(nn.Module):
                 #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)])
                 somu_lstm_hidden_states_list.append(somu_hidden_states.transpose(0, 1))
                 somu_lstm_cell_states_list.append(somu_cell_states.transpose(0, 1))
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
-                # (h_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state], 
-                #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)]) --> 
-                # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_hidden_cell_states = \
-                    torch.cat((somu_lstm_hidden_states_list[i], somu_lstm_cell_states_list[i]), dim=1)
-                # self attention for memory from somu
-                # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
-                # somu_att_output [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states)[0]  
+                if self.somu_att_critic:
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
+                    # (h_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state], 
+                    #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)]) --> 
+                    # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_hidden_cell_states = \
+                        torch.cat((somu_lstm_hidden_states_list[i], somu_lstm_cell_states_list[i]), dim=1)
+                    # self attention for memory from somu
+                    # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
+                    # somu_att_output [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states)[0]  
             if self.scmu_critic:
                 # gnn_output[:, i, :].unsqueeze(dim=1) 
                 # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
@@ -1407,18 +1412,19 @@ class GCMNetCritic(nn.Module):
                 #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)])
                 scmu_lstm_hidden_states_list.append(scmu_hidden_states.transpose(0, 1))
                 scmu_lstm_cell_states_list.append(scmu_cell_states.transpose(0, 1))
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
-                # (h_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)], 
-                #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)]) --> 
-                # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_hidden_cell_states = \
-                    torch.cat((scmu_lstm_hidden_states_list[i], scmu_lstm_cell_states_list[i]), dim=1)
-                # self attention for memory from scmu
-                # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
-                # scmu_att_output [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states)[0]
+                if self.scmu_att_critic:
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
+                    # (h_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)], 
+                    #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)]) --> 
+                    # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_hidden_cell_states = \
+                        torch.cat((scmu_lstm_hidden_states_list[i], scmu_lstm_cell_states_list[i]), dim=1)
+                    # self attention for memory from scmu
+                    # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
+                    # scmu_att_output [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states)[0]
             # concat_output [shape: (batch_size, fc_input_dims)]
             if self.somu_critic == True and self.scmu_critic == True:
                 if self.somu_att_critic == True and self.scmu_att_critic == True:
@@ -1771,61 +1777,63 @@ class GCMNetCritic(nn.Module):
                 # [shape: (mini_batch_size * data_chunk_length, somu_lstm_hidden_size)]
                 somu_lstm_output = torch.stack(somu_seq_lstm_output_list, dim=1)\
                                         .reshape(mini_batch_size * self.data_chunk_length, self.somu_lstm_hidden_size)
-                # [shape: (data_chunk_length, somu_n_layers, mini_batch_size, somu_lstm_hidden_state)] --> 
-                # somu_lstm_hidden_states / somu_lstm_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, somu_n_layers, somu_lstm_hidden_state)]
-                somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
-                                               .permute(2, 0, 1, 3)\
-                                               .reshape(mini_batch_size * self.data_chunk_length, 
-                                                        self.somu_n_layers, 
-                                                        self.somu_lstm_hidden_size)
-                somu_lstm_cell_states = torch.stack(somu_seq_lstm_cell_states_list[1:], dim=0)\
-                                             .permute(2, 0, 1, 3)\
-                                             .reshape(mini_batch_size * self.data_chunk_length, 
-                                                      self.somu_n_layers, 
-                                                      self.somu_lstm_hidden_size)
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
-                # somu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
-                # self attention for memory from somu
-                # somu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
-                # somu_att_output
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states)[0]
+                if self.somu_att_critic:
+                    # [shape: (data_chunk_length, somu_n_layers, mini_batch_size, somu_lstm_hidden_state)] --> 
+                    # somu_lstm_hidden_states / somu_lstm_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, somu_n_layers, somu_lstm_hidden_state)]
+                    somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
+                                                   .permute(2, 0, 1, 3)\
+                                                   .reshape(mini_batch_size * self.data_chunk_length, 
+                                                            self.somu_n_layers, 
+                                                            self.somu_lstm_hidden_size)
+                    somu_lstm_cell_states = torch.stack(somu_seq_lstm_cell_states_list[1:], dim=0)\
+                                                 .permute(2, 0, 1, 3)\
+                                                 .reshape(mini_batch_size * self.data_chunk_length, 
+                                                          self.somu_n_layers, 
+                                                          self.somu_lstm_hidden_size)
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
+                    # somu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
+                    # self attention for memory from somu
+                    # somu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
+                    # somu_att_output
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states)[0]
             if self.scmu_critic:
                 # scmu_lstm_output 
                 # [shape: (mini_batch_size * data_chunk_length, scmu_lstm_hidden_state)]
                 scmu_lstm_output = torch.stack(scmu_seq_lstm_output_list, dim=1)\
                                         .reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)
-                # [shape: (data_chunk_length, scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)] --> 
-                # scmu_lstm_hidden_states / scmu_lstm_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_lstm_hidden_states = torch.stack(scmu_seq_lstm_hidden_states_list[1:], dim=0)\
-                                           .permute(2, 0, 1, 3)\
-                                           .reshape(mini_batch_size * self.data_chunk_length, 
-                                                    self.scmu_n_layers, 
-                                                    self.scmu_lstm_hidden_size)
-                scmu_lstm_cell_states = torch.stack(scmu_seq_lstm_cell_states_list[1:], dim=0)\
-                                             .permute(2, 0, 1, 3)\
-                                             .reshape(mini_batch_size * self.data_chunk_length, 
-                                                      self.scmu_n_layers, 
-                                                      self.scmu_lstm_hidden_size)
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for scmu
-                # scmu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
-                # self attention for memory from scmu
-                # scmu_hidden_cell_states 
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
-                # scmu_att_output 
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states)[0]
+                if self.scmu_att_critic:
+                    # [shape: (data_chunk_length, scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)] --> 
+                    # scmu_lstm_hidden_states / scmu_lstm_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_lstm_hidden_states = torch.stack(scmu_seq_lstm_hidden_states_list[1:], dim=0)\
+                                               .permute(2, 0, 1, 3)\
+                                               .reshape(mini_batch_size * self.data_chunk_length, 
+                                                        self.scmu_n_layers, 
+                                                        self.scmu_lstm_hidden_size)
+                    scmu_lstm_cell_states = torch.stack(scmu_seq_lstm_cell_states_list[1:], dim=0)\
+                                                 .permute(2, 0, 1, 3)\
+                                                 .reshape(mini_batch_size * self.data_chunk_length, 
+                                                          self.scmu_n_layers, 
+                                                          self.scmu_lstm_hidden_size)
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for scmu
+                    # scmu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
+                    # self attention for memory from scmu
+                    # scmu_hidden_cell_states 
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
+                    # scmu_att_output 
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states)[0]
             # concat_output [shape: (mini_batch_size * data_chunk_length, fc_input_dims)]
             if self.somu_critic == True and self.scmu_critic == True:
                 if self.somu_att_critic == True and self.scmu_att_critic == True:

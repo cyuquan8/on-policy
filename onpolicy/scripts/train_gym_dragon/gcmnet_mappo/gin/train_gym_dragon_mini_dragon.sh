@@ -58,16 +58,27 @@ beacon_reward_weight=0.01
 proximity_reward_weight=0.01
 
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
-n_gnn_fc_layers_${gcmnet_n_gnn_fc_layers}_\
-n_gnn_layers_${gcmnet_n_gnn_layers}_\
-episode_length_${episode_length}_\
-data_chunk_length_${data_chunk_length}_\
+n_gnn_fc_lyrs_${gcmnet_n_gnn_fc_layers}_\
+n_gnn_lyrs_${gcmnet_n_gnn_layers}_\
+ep_len_${episode_length}_\
+data_chunk_len_${data_chunk_length}_\
 num_mini_batch_${num_mini_batch}_\
 lr_${lr}_\
-critic_lr_${critic_lr}_\
+c_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}_\
-region_${region}_somu_actor_scmu_actor_somu_critic_scmu_critic_dyna_dyna_rew"
+reg_${region}
+_somu_a\
+_somu_att_a\
+_scmu_a\
+_scmu_att_a\
+_somu_c\
+_somu_att_c\
+_scmu_c\
+_scmu_att_c\
+_dyna\
+_dyna_rew\
+"
 
 echo "env is ${env}, region is ${region}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 if [ "$seed_max" -eq 0 ]; then
@@ -90,6 +101,10 @@ if [ "$seed_max" -eq 0 ]; then
     --gcmnet_scmu_actor\
     --gcmnet_somu_critic\
     --gcmnet_scmu_critic\
+    --gcmnet_somu_att_actor\
+    --gcmnet_scmu_att_actor\
+    --gcmnet_somu_att_critic\
+    --gcmnet_scmu_att_critic\
     --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
     --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
     --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -136,6 +151,10 @@ if [ "$seed_max" -eq 0 ]; then
     # --gcmnet_scmu_actor\
     # --gcmnet_somu_critic\
     # --gcmnet_scmu_critic\
+    # --gcmnet_somu_att_actor\
+    # --gcmnet_scmu_att_actor\
+    # --gcmnet_somu_att_critic\
+    # --gcmnet_scmu_att_critic\
     # --gcmnet_knn\
     # --gcmnet_rni\
     # --gcmnet_dynamics\
@@ -198,6 +217,10 @@ else
         --gcmnet_scmu_actor\
         --gcmnet_somu_critic\
         --gcmnet_scmu_critic\
+        --gcmnet_somu_att_actor\
+        --gcmnet_scmu_att_actor\
+        --gcmnet_somu_att_critic\
+        --gcmnet_scmu_att_critic\
         --gcmnet_somu_n_layers ${gcmnet_somu_n_layers}\
         --gcmnet_somu_lstm_hidden_size ${gcmnet_somu_lstm_hidden_size}\
         --gcmnet_somu_multi_att_n_heads ${gcmnet_somu_multi_att_n_heads}\
@@ -244,6 +267,10 @@ else
         # --gcmnet_scmu_actor\
         # --gcmnet_somu_critic\
         # --gcmnet_scmu_critic\
+        # --gcmnet_somu_att_actor\
+        # --gcmnet_scmu_att_actor\
+        # --gcmnet_somu_att_critic\
+        # --gcmnet_scmu_att_critic\
         # --gcmnet_knn\
         # --gcmnet_rni\
         # --gcmnet_dynamics\

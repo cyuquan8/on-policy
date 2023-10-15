@@ -57,12 +57,16 @@ class GCMNetActor(nn.Module):
         self.scmu_actor = args.gcmnet_scmu_actor
         self.somu_critic = args.gcmnet_somu_critic
         self.scmu_critic = args.gcmnet_scmu_critic
+        self.somu_att_actor = args.gcmnet_somu_att_actor
+        self.scmu_att_actor = args.gcmnet_scmu_att_actor
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.gcmnet_scmu_lstm_hidden_size
         self.somu_multi_att_n_heads = args.gcmnet_somu_multi_att_n_heads
         self.scmu_multi_att_n_heads = args.gcmnet_scmu_multi_att_n_heads
+        assert not (self.somu_actor == False and self.somu_att_actor == True)
+        assert not (self.scmu_actor == False and self.scmu_att_actor == True)
 
         self.fc_output_dims = args.gcmnet_fc_output_dims
         self.n_fc_layers = args.gcmnet_n_fc_layers
@@ -175,18 +179,41 @@ class GCMNetActor(nn.Module):
 
         # calculate input dimensions for fc layers
         if self.somu_actor == True and self.scmu_actor == True:
-            # all concatenated layers of gnn (including initial observations) +  
-            # concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
-                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            if self.somu_att_actor == True and self.scmu_att_actor == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, somu_multi_att_layer, scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size \
+                                     + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            elif self.somu_att_actor == True and self.scmu_att_actor == False:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, somu_multi_att_layer and scmu_lstm
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size \
+                                     + self.scmu_lstm_hidden_size
+            elif self.somu_att_actor == False and self.scmu_att_actor == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size + \
+                                     (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm and scmu_lstm 
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size + self.scmu_lstm_hidden_size
         elif self.somu_actor == True and self.scmu_actor == False:
-            # all concatenated layers of gnn (including initial observations) + 
-            # concatenated outputs of somu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size
+            if self.somu_att_actor == True:
+                # all concatenated layers of gnn (including initial observations) + 
+                # concatenated outputs of somu_lstm and somu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) + somu_lstm
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size
         elif self.somu_actor == False and self.scmu_actor == True:
-            # all concatenated layers of gnn (including initial observations) +  
-            # concatenated outputs of scmu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            if self.scmu_att_actor == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) + scmu_lstm
+                self.fc_input_dims = self.scmu_input_dims + self.scmu_lstm_hidden_size
         else:
             # all concatenated layers of gnn (including initial observations)
             self.fc_input_dims = self.scmu_input_dims
@@ -337,18 +364,19 @@ class GCMNetActor(nn.Module):
                 #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)])
                 somu_lstm_hidden_states_list.append(somu_hidden_states.transpose(0, 1))
                 somu_lstm_cell_states_list.append(somu_cell_states.transpose(0, 1))
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
-                # (h_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state], 
-                #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)]) --> 
-                # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_hidden_cell_states = \
-                    torch.cat((somu_lstm_hidden_states_list[i], somu_lstm_cell_states_list[i]), dim=1)
-                # self attention for memory from somu
-                # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
-                # somu_att_output [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states)[0]  
+                if self.somu_att_actor == True:
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
+                    # (h_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state], 
+                    #  c_n [shape: (batch_size, somu_n_layers, somu_lstm_hidden_state)]) --> 
+                    # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_hidden_cell_states = \
+                        torch.cat((somu_lstm_hidden_states_list[i], somu_lstm_cell_states_list[i]), dim=1)
+                    # self attention for memory from somu
+                    # somu_hidden_cell_states [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
+                    # somu_att_output [shape: (batch_size, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states)[0]  
             if self.scmu_actor:
                 # gnn_output[:, i, :].unsqueeze(dim=1) 
                 # [shape: (batch_size, sequence_length=1, scmu_input_dims)],
@@ -375,46 +403,90 @@ class GCMNetActor(nn.Module):
                 #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)])
                 scmu_lstm_hidden_states_list.append(scmu_hidden_states.transpose(0, 1))
                 scmu_lstm_cell_states_list.append(scmu_cell_states.transpose(0, 1))
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
-                # (h_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)], 
-                #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)]) --> 
-                # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_hidden_cell_states = \
-                    torch.cat((scmu_lstm_hidden_states_list[i], scmu_lstm_cell_states_list[i]), dim=1)
-                # self attention for memory from scmu
-                # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
-                # scmu_att_output [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states)[0]
+                if self.scmu_att_actor == True:
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu and scmu
+                    # (h_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)], 
+                    #  c_n [shape: (batch_size, scmu_n_layers, scmu_lstm_hidden_state)]) --> 
+                    # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_hidden_cell_states = \
+                        torch.cat((scmu_lstm_hidden_states_list[i], scmu_lstm_cell_states_list[i]), dim=1)
+                    # self attention for memory from scmu
+                    # scmu_hidden_cell_states [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
+                    # scmu_att_output [shape: (batch_size, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states)[0]
             # concat_output [shape: (batch_size, fc_input_dims)]
             if self.somu_actor == True and self.scmu_actor == True:
-                # concatenate outputs from gnn, somu and scmu 
-                concat_output = torch.cat((gnn_output[:, i, :], 
-                                           somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                           somu_att_output.reshape(batch_size, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
-                                           scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                           scmu_att_output.reshape(batch_size, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_actor == True and self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer, scmu_lstm and 
+                    # scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_actor == True and self.scmu_att_actor == False:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_actor == False and self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm, scmu_lstm and scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn, somu_lstm and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             elif self.somu_actor == True and self.scmu_actor == False:
-                # concatenate outputs from gnn and somu
-                concat_output = torch.cat((gnn_output[:, i, :], 
-                                           somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                           somu_att_output.reshape(batch_size, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm and somu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and somu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             elif self.somu_actor == False and self.scmu_actor == True:
-                # concatenate outputs from gnn and scmu 
-                concat_output = torch.cat((gnn_output[:, i, :],  
-                                           scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                           scmu_att_output.reshape(batch_size, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, scmu_lstm and scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             else:
                 # all concatenated layers of gnn (including initial observations)
                 concat_output = gnn_output[:, i, :]
@@ -798,89 +870,139 @@ class GCMNetActor(nn.Module):
                 # [shape: (mini_batch_size * data_chunk_length, somu_lstm_hidden_size)]
                 somu_lstm_output = torch.stack(somu_seq_lstm_output_list, dim=1)\
                                         .reshape(mini_batch_size * self.data_chunk_length, self.somu_lstm_hidden_size)
-                # [shape: (data_chunk_length, somu_n_layers, mini_batch_size, somu_lstm_hidden_state)] --> 
-                # somu_lstm_hidden_states / somu_lstm_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, somu_n_layers, somu_lstm_hidden_state)]
-                somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
-                                               .permute(2, 0, 1, 3)\
-                                               .reshape(mini_batch_size * self.data_chunk_length, 
-                                                        self.somu_n_layers, 
-                                                        self.somu_lstm_hidden_size)
-                somu_lstm_cell_states = torch.stack(somu_seq_lstm_cell_states_list[1:], dim=0)\
-                                             .permute(2, 0, 1, 3)\
-                                             .reshape(mini_batch_size * self.data_chunk_length, 
-                                                      self.somu_n_layers, 
-                                                      self.somu_lstm_hidden_size)
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
-                # somu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
-                # self attention for memory from somu
-                # somu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
-                # somu_att_output
-                # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
-                somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states, 
-                                                                    somu_hidden_cell_states)[0]
+                if self.somu_att_actor:
+                    # [shape: (data_chunk_length, somu_n_layers, mini_batch_size, somu_lstm_hidden_state)] --> 
+                    # somu_lstm_hidden_states / somu_lstm_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, somu_n_layers, somu_lstm_hidden_state)]
+                    somu_lstm_hidden_states = torch.stack(somu_seq_lstm_hidden_states_list[1:], dim=0)\
+                                                   .permute(2, 0, 1, 3)\
+                                                   .reshape(mini_batch_size * self.data_chunk_length, 
+                                                            self.somu_n_layers, 
+                                                            self.somu_lstm_hidden_size)
+                    somu_lstm_cell_states = torch.stack(somu_seq_lstm_cell_states_list[1:], dim=0)\
+                                                 .permute(2, 0, 1, 3)\
+                                                 .reshape(mini_batch_size * self.data_chunk_length, 
+                                                          self.somu_n_layers, 
+                                                          self.somu_lstm_hidden_size)
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for somu
+                    # somu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_hidden_cell_states = torch.cat((somu_lstm_hidden_states, somu_lstm_cell_states), dim=1)
+                    # self attention for memory from somu
+                    # somu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)] --> 
+                    # somu_att_output
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * somu_n_layers, somu_lstm_hidden_state)]
+                    somu_att_output = self.somu_multi_att_layer_list[i](somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states, 
+                                                                        somu_hidden_cell_states)[0]
             if self.scmu_actor:
                 # scmu_lstm_output 
                 # [shape: (mini_batch_size * data_chunk_length, scmu_lstm_hidden_state)]
                 scmu_lstm_output = torch.stack(scmu_seq_lstm_output_list, dim=1)\
                                         .reshape(mini_batch_size * self.data_chunk_length, self.scmu_lstm_hidden_size)
-                # [shape: (data_chunk_length, scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)] --> 
-                # scmu_lstm_hidden_states / scmu_lstm_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_lstm_hidden_states = torch.stack(scmu_seq_lstm_hidden_states_list[1:], dim=0)\
-                                           .permute(2, 0, 1, 3)\
-                                           .reshape(mini_batch_size * self.data_chunk_length, 
-                                                    self.scmu_n_layers, 
-                                                    self.scmu_lstm_hidden_size)
-                scmu_lstm_cell_states = torch.stack(scmu_seq_lstm_cell_states_list[1:], dim=0)\
-                                             .permute(2, 0, 1, 3)\
-                                             .reshape(mini_batch_size * self.data_chunk_length, 
-                                                      self.scmu_n_layers, 
-                                                      self.scmu_lstm_hidden_size)
-                # concatenate hidden (short-term memory) and cell (long-term memory) states for scmu
-                # scmu_hidden_cell_states
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
-                # self attention for memory from scmu
-                # scmu_hidden_cell_states 
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
-                # scmu_att_output 
-                # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
-                scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states, 
-                                                                    scmu_hidden_cell_states)[0]
+                if self.scmu_att_actor:
+                    # [shape: (data_chunk_length, scmu_n_layers, mini_batch_size, scmu_lstm_hidden_state)] --> 
+                    # scmu_lstm_hidden_states / scmu_lstm_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_lstm_hidden_states = torch.stack(scmu_seq_lstm_hidden_states_list[1:], dim=0)\
+                                               .permute(2, 0, 1, 3)\
+                                               .reshape(mini_batch_size * self.data_chunk_length, 
+                                                        self.scmu_n_layers, 
+                                                        self.scmu_lstm_hidden_size)
+                    scmu_lstm_cell_states = torch.stack(scmu_seq_lstm_cell_states_list[1:], dim=0)\
+                                                 .permute(2, 0, 1, 3)\
+                                                 .reshape(mini_batch_size * self.data_chunk_length, 
+                                                          self.scmu_n_layers, 
+                                                          self.scmu_lstm_hidden_size)
+                    # concatenate hidden (short-term memory) and cell (long-term memory) states for scmu
+                    # scmu_hidden_cell_states
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_hidden_cell_states = torch.cat((scmu_lstm_hidden_states, scmu_lstm_cell_states), dim=1)
+                    # self attention for memory from scmu
+                    # scmu_hidden_cell_states 
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)] --> 
+                    # scmu_att_output 
+                    # [shape: (mini_batch_size * data_chunk_length, 2 * scmu_n_layers, scmu_lstm_hidden_state)]
+                    scmu_att_output = self.scmu_multi_att_layer_list[i](scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states, 
+                                                                        scmu_hidden_cell_states)[0]
             # concat_output [shape: (mini_batch_size * data_chunk_length, fc_input_dims)]
             if self.somu_actor == True and self.scmu_actor == True:
-                # concatenate outputs from gnn, somu and scmu 
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           somu_lstm_output,
-                                           somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size),
-                                           scmu_lstm_output, 
-                                           scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_actor == True and self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_actor == True and self.scmu_att_actor == False:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
+                elif self.somu_att_actor == False and self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn, somu_lstm and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
             elif self.somu_actor == True and self.scmu_actor == False:
-                # concatenate outputs from gnn and somu
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           somu_lstm_output,
-                                           somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_actor == True:
+                    # concatenate outputs from gnn, somu_lstm and somu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and somu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output
+                        ), 
+                    dim=-1)
             elif self.somu_actor == False and self.scmu_actor == True:
-                # concatenate outputs from gnn and scmu 
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           scmu_lstm_output, 
-                                           scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.scmu_att_actor == True:
+                    # concatenate outputs from gnn, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
             else:
                 assert self.somu_critic == True or self.scmu_critic == True
                 concat_output = gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1)
@@ -965,12 +1087,16 @@ class GCMNetCritic(nn.Module):
         self.scmu_actor = args.gcmnet_scmu_actor
         self.somu_critic = args.gcmnet_somu_critic
         self.scmu_critic = args.gcmnet_scmu_critic
+        self.somu_att_critic = args.gcmnet_somu_att_critic
+        self.scmu_att_critic = args.gcmnet_scmu_att_critic
         self.somu_n_layers = args.gcmnet_somu_n_layers
         self.scmu_n_layers = args.gcmnet_scmu_n_layers
         self.somu_lstm_hidden_size = args.gcmnet_somu_lstm_hidden_size
         self.scmu_lstm_hidden_size = args.gcmnet_scmu_lstm_hidden_size
         self.somu_multi_att_n_heads = args.gcmnet_somu_multi_att_n_heads
         self.scmu_multi_att_n_heads = args.gcmnet_scmu_multi_att_n_heads
+        assert not (self.somu_critic == False and self.somu_att_critic == True)
+        assert not (self.scmu_critic == False and self.scmu_att_critic == True)
 
         self.fc_output_dims = args.gcmnet_fc_output_dims
         self.n_fc_layers = args.gcmnet_n_fc_layers
@@ -1078,18 +1204,41 @@ class GCMNetCritic(nn.Module):
 
         # calculate input dimensions for fc layers
         if self.somu_critic == True and self.scmu_critic == True:
-            # all concatenated layers of gnn (including initial observations) +  
-            # concatenated outputs of somu_multi_att_layer and scmu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size + \
-                                 (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            if self.somu_att_critic == True and self.scmu_att_critic == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, somu_multi_att_layer, scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size \
+                                     + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            elif self.somu_att_critic == True and self.scmu_att_critic == False:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, somu_multi_att_layer and scmu_lstm
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size \
+                                     + self.scmu_lstm_hidden_size
+            elif self.somu_att_critic == False and self.scmu_att_critic == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm, scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size + \
+                                     (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of somu_lstm and scmu_lstm 
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size + self.scmu_lstm_hidden_size
         elif self.somu_critic == True and self.scmu_critic == False:
-            # all concatenated layers of gnn (including initial observations) + 
-            # concatenated outputs of somu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size
+            if self.somu_att_critic == True:
+                # all concatenated layers of gnn (including initial observations) + 
+                # concatenated outputs of somu_lstm and somu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.somu_n_layers + 1) * self.somu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) + somu_lstm
+                self.fc_input_dims = self.scmu_input_dims + self.somu_lstm_hidden_size
         elif self.somu_critic == False and self.scmu_critic == True:
-            # all concatenated layers of gnn (including initial observations) +  
-            # concatenated outputs of scmu_multi_att_layer
-            self.fc_input_dims = self.scmu_input_dims + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            if self.scmu_att_critic == True:
+                # all concatenated layers of gnn (including initial observations) +  
+                # concatenated outputs of scmu_lstm and scmu_multi_att_layer
+                self.fc_input_dims = self.scmu_input_dims + (2 * self.scmu_n_layers + 1) * self.scmu_lstm_hidden_size
+            else:
+                # all concatenated layers of gnn (including initial observations) + scmu_lstm
+                self.fc_input_dims = self.scmu_input_dims + self.scmu_lstm_hidden_size
         else:
             # all concatenated layers of gnn (including initial observations)
             self.fc_input_dims = self.scmu_input_dims
@@ -1272,32 +1421,75 @@ class GCMNetCritic(nn.Module):
                                                                     scmu_hidden_cell_states)[0]
             # concat_output [shape: (batch_size, fc_input_dims)]
             if self.somu_critic == True and self.scmu_critic == True:
-                # concatenate outputs from gnn, somu and scmu 
-                concat_output = torch.cat((gnn_output[:, i, :], 
-                                           somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                           somu_att_output.reshape(batch_size, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
-                                           scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                           scmu_att_output.reshape(batch_size, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_critic == True and self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer, scmu_lstm and 
+                    # scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_critic == True and self.scmu_att_critic == False:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_critic == False and self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm, scmu_lstm and scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn, somu_lstm and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size), 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             elif self.somu_critic == True and self.scmu_critic == False:
-                # concatenate outputs from gnn and somu
-                concat_output = torch.cat((gnn_output[:, i, :], 
-                                           somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
-                                           somu_att_output.reshape(batch_size, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm and somu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size),
+                        somu_att_output.reshape(batch_size, 2 * self.somu_n_layers * self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and somu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        somu_lstm_output.reshape(batch_size, self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             elif self.somu_critic == False and self.scmu_critic == True:
-                # concatenate outputs from gnn and scmu 
-                concat_output = torch.cat((gnn_output[:, i, :],  
-                                           scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
-                                           scmu_att_output.reshape(batch_size, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, scmu_lstm and scmu_multi_att_layer 
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size),
+                        scmu_att_output.reshape(batch_size, 2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, i, :], 
+                        scmu_lstm_output.reshape(batch_size, self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
             else:
                 # all concatenated layers of gnn (including initial observations)
                 concat_output = gnn_output[:, i, :]
@@ -1636,35 +1828,83 @@ class GCMNetCritic(nn.Module):
                                                                     scmu_hidden_cell_states)[0]
             # concat_output [shape: (mini_batch_size * data_chunk_length, fc_input_dims)]
             if self.somu_critic == True and self.scmu_critic == True:
-                # concatenate outputs from gnn, somu and scmu 
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           somu_lstm_output,
-                                           somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size),
-                                           scmu_lstm_output, 
-                                           scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_critic == True and self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                elif self.somu_att_critic == True and self.scmu_att_critic == False:
+                    # concatenate outputs from gnn, somu_lstm, somu_multi_att_layer and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size),
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
+                elif self.somu_att_critic == False and self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn, somu_lstm and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
             elif self.somu_critic == True and self.scmu_critic == False:
-                # concatenate outputs from gnn and somu
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           somu_lstm_output,
-                                           somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.somu_n_layers * self.somu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.somu_att_critic == True:
+                    # concatenate outputs from gnn, somu_lstm and somu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output,
+                        somu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.somu_n_layers * self.somu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and somu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        somu_lstm_output
+                        ), 
+                    dim=-1)
             elif self.somu_critic == False and self.scmu_critic == True:
-                # concatenate outputs from gnn and scmu 
-                concat_output = torch.cat((gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
-                                           scmu_lstm_output, 
-                                           scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
-                                                                   2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
-                                          ), 
-                                          dim=-1)
+                if self.scmu_att_critic == True:
+                    # concatenate outputs from gnn, scmu_lstm and scmu_multi_att_layer
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        scmu_lstm_output, 
+                        scmu_att_output.reshape(mini_batch_size * self.data_chunk_length, 
+                                                2 * self.scmu_n_layers * self.scmu_lstm_hidden_size)
+                        ), 
+                    dim=-1)
+                else:
+                    # concatenate outputs from gnn and scmu_lstm
+                    concat_output = torch.cat((
+                        gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1), 
+                        scmu_lstm_output
+                        ), 
+                    dim=-1)
             else:
                 assert self.somu_actor == True or self.scmu_actor == True
-                concat_output = gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1)
+                concat_output = gnn_output[:, :, i, :].reshape(mini_batch_size * self.data_chunk_length, -1)    
             # concat_output [shape: (mini_batch_size * data_chunk_length, fc_input_dims)] --> 
             # fc_layers [shape: (mini_batch_size * data_chunk_length, fc_output_dims)]
             fc_output = self.fc_layers(concat_output)

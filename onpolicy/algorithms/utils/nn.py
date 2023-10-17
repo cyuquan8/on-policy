@@ -624,7 +624,7 @@ class GNNAllLayers(NNLayers):
         function for forward pass of layers
         """
         # create copy of input
-        out = x.detach().clone()
+        out = x.clone()
         # iterate over each block
         for block in self.blocks:
             # output y with shape [num_nodes, out_channels]

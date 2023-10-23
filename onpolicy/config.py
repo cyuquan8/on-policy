@@ -104,14 +104,22 @@ def get_config():
             Whether to use Self Observation Memory Unit (SOMU) in GCMNet for critic network, (default: False)
         --gcmnet_scmu_critic
             Whether to use Self Communication Memory Unit (SCMU) in GCMNet for critic network, (default: False)
+        --gcmnet_somu_lstm_actor" 
+            Whether to use LSTM output of Self Observation Memory Unit (SOMU) in GCMNet for actor network, (default: False)
+        --gcmnet_scmu_lstm_actor" 
+            Whether to use LSTM output of Self Communication Memory Unit (SCMU) in GCMNet for actor network, (default: False)
+        --gcmnet_somu_lstm_critic" 
+            Whether to use LSTM output of Self Observation Memory Unit (SOMU) in GCMNet for critic network, (default: False)
+        --gcmnet_scmu_lstm_critic" 
+            Whether to use LSTM output of Self Communication Memory Unit (SCMU) in GCMNet for critic network, (default: False)
         --gcmnet_somu_att_actor
-            Whether to use to use self-attention for hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for actor network, (default: False)
+            Whether to use to use self-attention output from hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for actor network, (default: False)
         --gcmnet_scmu_att_actor
-            Whether to use to use self-attention for hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for actor network, (default: False)
+            Whether to use to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for actor network, (default: False)
         --gcmnet_somu_att_critic
-            Whether to use to use self-attention for hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for critic network, (default: False)
+            Whether to use to use self-attention output from hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for critic network, (default: False)
         --gcmnet_scmu_att_critic
-            Whether to use to use self-attention for hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network, (default: False)
+            Whether to use to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network, (default: False)
         --gcmnet_somu_n_layers <int>
             Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet, (default: 2)
         --gcmnet_somu_lstm_hidden_size <int>
@@ -311,10 +319,14 @@ def get_config():
     parser.add_argument("--gcmnet_scmu_actor", action='store_true', default=False, help="Whether to use Self Communication Memory Unit (SCMU) in GCMNet for actor network")
     parser.add_argument("--gcmnet_somu_critic", action='store_true', default=False, help="Whether to use Self Observation Memory Unit (SOMU) in GCMNet for critic network")
     parser.add_argument("--gcmnet_scmu_critic", action='store_true', default=False, help="Whether to use Self Communication Memory Unit (SCMU) in GCMNet for critic network")
-    parser.add_argument("--gcmnet_somu_att_actor", action='store_true', default=False, help="Whether to use self-attention for hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for actor network")
-    parser.add_argument("--gcmnet_scmu_att_actor", action='store_true', default=False, help="Whether to use self-attention for hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for actor network")
-    parser.add_argument("--gcmnet_somu_att_critic", action='store_true', default=False, help="Whether to use self-attention for hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for critic network")
-    parser.add_argument("--gcmnet_scmu_att_critic", action='store_true', default=False, help="Whether to use self-attention for hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network")
+    parser.add_argument("--gcmnet_somu_lstm_actor", action='store_true', default=False, help="Whether to use LSTM output of Self Observation Memory Unit (SOMU) in GCMNet for actor network")
+    parser.add_argument("--gcmnet_scmu_lstm_actor", action='store_true', default=False, help="Whether to use LSTM output of Self Communication Memory Unit (SCMU) in GCMNet for actor network")
+    parser.add_argument("--gcmnet_somu_lstm_critic", action='store_true', default=False, help="Whether to use LSTM output of Self Observation Memory Unit (SOMU) in GCMNet for critic network")
+    parser.add_argument("--gcmnet_scmu_lstm_critic", action='store_true', default=False, help="Whether to use LSTM output of Self Communication Memory Unit (SCMU) in GCMNet for critic network")
+    parser.add_argument("--gcmnet_somu_att_actor", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for actor network")
+    parser.add_argument("--gcmnet_scmu_att_actor", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for actor network")
+    parser.add_argument("--gcmnet_somu_att_critic", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for critic network")
+    parser.add_argument("--gcmnet_scmu_att_critic", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network")
     parser.add_argument("--gcmnet_somu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet")
     parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet")
     parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SOMU outputs in GCMNet")

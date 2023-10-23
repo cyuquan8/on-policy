@@ -17,7 +17,7 @@ clip_param=0.2
 eval_episodes=32
 
 gcmnet_gnn_architecture="dna_gatv2"
-gcmnet_gnn_output_dims=64  
+gcmnet_gnn_output_dims=64
 gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
@@ -49,14 +49,10 @@ lr_${lr}_\
 c_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}\
-_somu_a\
-_somu_att_a\
-_scmu_a\
-_scmu_att_a\
-_somu_c\
-_somu_att_c\
-_scmu_c\
-_scmu_att_c\
+_somu_lstm_att_a\
+_scmu_lstm_att_a\
+_somu_lstm_att_c\
+_scmu_lstm_att_c\
 _dyna\
 _dyna_rew\
 "
@@ -83,6 +79,10 @@ do
     --gcmnet_scmu_actor\
     --gcmnet_somu_critic\
     --gcmnet_scmu_critic\
+    --gcmnet_somu_lstm_actor\
+    --gcmnet_scmu_lstm_actor\
+    --gcmnet_somu_lstm_critic\
+    --gcmnet_scmu_lstm_critic\
     --gcmnet_somu_att_actor\
     --gcmnet_scmu_att_actor\
     --gcmnet_somu_att_critic\
@@ -109,6 +109,10 @@ do
     # --gcmnet_scmu_actor\
     # --gcmnet_somu_critic\
     # --gcmnet_scmu_critic\
+    # --gcmnet_somu_lstm_actor\
+    # --gcmnet_scmu_lstm_actor\
+    # --gcmnet_somu_lstm_critic\
+    # --gcmnet_scmu_lstm_critic\
     # --gcmnet_somu_att_actor\
     # --gcmnet_scmu_att_actor\
     # --gcmnet_somu_att_critic\

@@ -439,7 +439,7 @@ class DNAGATv2Conv(MessagePassing):
         if return_attention_weights:
             return out, (edge_index, alpha)
         else:
-            return out
+            return out, None
 
     def message(self, 
                 x_i: Tensor,
@@ -479,7 +479,7 @@ class DNAGATv2Conv(MessagePassing):
                 # 'emulate' concatentation to node embeddings
                 # [shape: num_edges, att_heads, out_channels]
                 x += edge_attr
-    
+            
             # pass node embeddings through leaky relu
             x = F.leaky_relu(x, self.negative_slope)
             # multiply by node independent parameter layer. sum over out_channels.

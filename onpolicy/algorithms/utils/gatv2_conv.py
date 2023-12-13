@@ -145,9 +145,13 @@ class GATv2Conv(MessagePassing):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, x: Union[Tensor, PairTensor], edge_index: Adj,
-                edge_attr: OptTensor = None,
-                return_attention_weights: bool = None):
+    def forward(
+            self, 
+            x: Union[Tensor, PairTensor], 
+            edge_index: Adj,
+            edge_attr: OptTensor = None,
+            return_attention_weights: bool = None
+        ):
         # type: (Union[Tensor, PairTensor], Tensor, OptTensor, NoneType) -> Tensor  # noqa
         # type: (Union[Tensor, PairTensor], SparseTensor, OptTensor, NoneType) -> Tensor  # noqa
         # type: (Union[Tensor, PairTensor], Tensor, OptTensor, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
@@ -237,11 +241,17 @@ class GATv2Conv(MessagePassing):
             elif isinstance(edge_index, SparseTensor):
                 return out, edge_index.set_value(alpha, layout='coo')
         else:
-            return out
+            return out, None
 
-    def message(self, x_j: Tensor, x_i: Tensor, edge_attr: OptTensor,
-                index: Tensor, ptr: OptTensor,
-                size_i: Optional[int]) -> Tensor:
+    def message(
+            self, 
+            x_j: Tensor, 
+            x_i: Tensor, 
+            edge_attr: OptTensor,
+            index: Tensor, 
+            ptr: OptTensor,
+            size_i: Optional[int]
+        ) -> Tensor:
         # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
         # [shape: num_edges, att_heads, out_channels]
         x = x_i + x_j

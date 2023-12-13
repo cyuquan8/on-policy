@@ -3,11 +3,11 @@ import torch.nn as nn
 
 from onpolicy.algorithms.utils.nn import (
     DNAGATv2Block,
-    DNAGATv2Layers,
     GAINBlock,
     GATv2Block,
     GINBlock, 
-    GNNAllLayers, 
+    GNNAllLayers,
+    GNNDNALayers, 
     MLPBlock, 
     NNLayers
 )
@@ -51,7 +51,8 @@ class GCMNetActor(nn.Module):
         self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
         self.n_gnn_fc_layers = args.gcmnet_n_gnn_fc_layers
-        self.train_eps = args.gcmnet_train_eps
+        self.gnn_train_eps = args.gcmnet_gnn_train_eps
+        self.gnn_norm = args.gcmnet_gnn_norm
 
         self.somu_actor = args.gcmnet_somu_actor
         self.scmu_actor = args.gcmnet_scmu_actor
@@ -101,24 +102,29 @@ class GCMNetActor(nn.Module):
 
         # gnn layers
         if self.gnn_architecture == 'dna_gatv2':
-            self.gnn_layers = DNAGATv2Layers(input_channels=self.obs_dims + self.rni_dims if self.rni \
-                                                            else self.obs_dims, 
-                                             block=DNAGATv2Block, 
-                                             output_channels=[self.obs_dims + self.rni_dims if self.rni \
-                                                              else self.obs_dims for _ in range(self.n_gnn_layers)],
-                                             att_heads=self.gnn_att_heads,
-                                             mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
-                                             gnn_cpa_model=self.gnn_cpa_model)
+            self.gnn_layers = GNNDNALayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=DNAGATv2Block, 
+                output_channels=[self.obs_dims + self.rni_dims if self.rni else self.obs_dims \
+                                 for _ in range(self.n_gnn_layers)],
+                att_heads=self.gnn_att_heads,
+                mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
+                gnn_cpa_model=self.gnn_cpa_model,
+                norm_type=self.gnn_norm 
+            )
             # calculate relevant input dimensions
             self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
                                    if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
         elif self.gnn_architecture == 'gatv2':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GATv2Block, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           heads=self.gnn_att_heads,
-                                           concat=self.gnn_att_concat,
-                                           gnn_cpa_model=self.gnn_cpa_model)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GATv2Block, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                heads=self.gnn_att_heads,
+                concat=self.gnn_att_concat,
+                gnn_cpa_model=self.gnn_cpa_model,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
             if self.rni:
                 self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims + \
@@ -129,62 +135,78 @@ class GCMNetActor(nn.Module):
                                        if self.gnn_att_concat else \
                                        self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gin':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GINBlock, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           n_gnn_fc_layers=self.n_gnn_fc_layers,
-                                           train_eps=self.train_eps)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GINBlock, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                n_gnn_fc_layers=self.n_gnn_fc_layers,
+                train_eps=self.gnn_train_eps,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
             self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
                                    if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gain':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GAINBlock, 
-                                           output_channels=[self.obs_dims + self.rni_dims if self.rni \
-                                                            else self.obs_dims for _ in range(self.n_gnn_layers)],
-                                           heads=self.gnn_att_heads, 
-                                           n_gnn_fc_layers=self.n_gnn_fc_layers)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GAINBlock, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                n_gnn_fc_layers=self.n_gnn_fc_layers,
+                heads=self.gnn_att_heads,
+                concat=self.gnn_att_concat,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
-            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
-                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
 
         if self.somu_actor:
             # list of lstms for self observation memory unit (somu) for each agent
             # somu_lstm_input_size is the dimension of the observations
-            self.somu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.obs_dims, 
-                                                         hidden_size=self.somu_lstm_hidden_size, 
-                                                         num_layers=self.somu_n_layers, 
-                                                         batch_first=True,
-                                                         device=device)
-                                                 for _ in range(self.num_agents)])
+            self.somu_lstm_list = nn.ModuleList([
+                nn.LSTM(
+                    input_size=self.obs_dims, 
+                    hidden_size=self.somu_lstm_hidden_size, 
+                    num_layers=self.somu_n_layers, 
+                    batch_first=True,
+                    device=device
+                ) for _ in range(self.num_agents)
+            ])
             if self.somu_att_actor:
                 # multi-head self attention layer for somu to selectively choose between the lstms outputs
-                self.somu_multi_att_layer_list = \
-                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
-                                                         num_heads=self.somu_multi_att_n_heads, 
-                                                         dropout=0, 
-                                                         batch_first=True, 
-                                                         device=device) 
-                                   for _ in range(self.num_agents)])
+                self.somu_multi_att_layer_list = nn.ModuleList([
+                    nn.MultiheadAttention(
+                        embed_dim=self.somu_lstm_hidden_size, 
+                        num_heads=self.somu_multi_att_n_heads, 
+                        dropout=0, 
+                        batch_first=True, 
+                        device=device
+                    ) for _ in range(self.num_agents)
+                ])
 
         if self.scmu_actor:
             # list of lstms for self communication memory unit (scmu) for each agent
             # somu_lstm_input_size are all layers of gnn
-            self.scmu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.scmu_input_dims, 
-                                                         hidden_size=self.scmu_lstm_hidden_size, 
-                                                         num_layers=self.scmu_n_layers, 
-                                                         batch_first=True,
-                                                         device=device)
-                                                 for _ in range(self.num_agents)])
+            self.scmu_lstm_list = nn.ModuleList([
+                nn.LSTM(
+                    input_size=self.scmu_input_dims, 
+                    hidden_size=self.scmu_lstm_hidden_size, 
+                    num_layers=self.scmu_n_layers, 
+                    batch_first=True,
+                    device=device
+                ) for _ in range(self.num_agents)
+            ])
             if self.scmu_att_actor:
                 # multi-head self attention layer for scmu to selectively choose between the lstms outputs
-                self.scmu_multi_att_layer_list = \
-                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
-                                                         num_heads=self.scmu_multi_att_n_heads, 
-                                                         dropout=0, 
-                                                         batch_first=True, 
-                                                         device=device) 
-                                   for _ in range(self.num_agents)])
+                self.scmu_multi_att_layer_list = nn.ModuleList([
+                    nn.MultiheadAttention(
+                        embed_dim=self.scmu_lstm_hidden_size, 
+                        num_heads=self.scmu_multi_att_n_heads, 
+                        dropout=0, 
+                        batch_first=True, 
+                        device=device
+                    ) for _ in range(self.num_agents)
+                ])
 
         # calculate input dimensions for fc layers
         if self.somu_actor == True and self.scmu_actor == True:
@@ -257,34 +279,47 @@ class GCMNetActor(nn.Module):
 
         # shared hidden fc layers for to generate actions for each agent
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=self.fc_input_dims, 
-                                  block=MLPBlock, 
-                                  output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
-                                  activation_func='relu', 
-                                  dropout_p=0, 
-                                  weight_initialisation="orthogonal" if self._use_orthogonal else "default")
+        self.fc_layers = NNLayers(
+            input_channels=self.fc_input_dims, 
+            block=MLPBlock, 
+            output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)],
+            norm_type='none', 
+            activation_func='relu', 
+            dropout_p=0, 
+            weight_initialisation="orthogonal" if self._use_orthogonal else "default"
+        )
 
         # dynamics models
         if self.dynamics:
-            self.dynamics_list = \
-                nn.ModuleList([
-                    NNLayers(input_channels=self.fc_input_dims + self.act_dims, 
-                             block=MLPBlock, 
-                             output_channels=[self.obs_dims if i + 1 == self.dynamics_n_fc_layers else \
-                                              self.dynamics_fc_output_dims for i in range(self.dynamics_n_fc_layers)], 
-                             activation_func='relu', 
-                             dropout_p=0, 
-                             weight_initialisation="orthogonal" if self._use_orthogonal else "default")
-                    for _ in range(self.num_agents)
-                ])
+            self.dynamics_list = nn.ModuleList([
+                NNLayers(
+                    input_channels=self.fc_input_dims + self.act_dims, 
+                    block=MLPBlock, 
+                    output_channels=[self.obs_dims if i + 1 == self.dynamics_n_fc_layers else \
+                                     self.dynamics_fc_output_dims for i in range(self.dynamics_n_fc_layers)],
+                    norm_type='none', 
+                    activation_func='relu', 
+                    dropout_p=0, 
+                    weight_initialisation="orthogonal" if self._use_orthogonal else "default"
+                ) for _ in range(self.num_agents)
+            ])
 
         # shared final action layer for each agent
         self.act = SingleACTLayer(action_space, self.fc_output_dims, self._use_orthogonal, self._gain)
         
         self.to(device)
         
-    def forward(self, obs, masks, available_actions=None, somu_hidden_states_actor=None, somu_cell_states_actor=None, 
-                scmu_hidden_states_actor=None, scmu_cell_states_actor=None, deterministic=False):
+    def forward(
+            self, 
+            obs, 
+            masks, 
+            available_actions=None, 
+            somu_hidden_states_actor=None, 
+            somu_cell_states_actor=None, 
+            scmu_hidden_states_actor=None, 
+            scmu_cell_states_actor=None, 
+            deterministic=False
+        ):
         """
         Compute actions from the given inputs.
         :param obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -305,40 +340,29 @@ class GCMNetActor(nn.Module):
         :return scmu_cell_states_actor: (torch.Tensor) hidden states for scmu network.
         :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
-        if self.knn:
-            # [shape: (batch_size, num_agents, obs_dims)]
-            obs = check(obs) 
-            batch_size = obs.shape[0]
-            # [shape: (batch_size * num_agents, obs_dims)]
-            obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)  
-            if self.rni:
-                # zero mean std 1 gaussian noise
-                # [shape: (batch_size, num_agents, rni_dims)] 
-                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
-                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(batch_size)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (batch_size, num_agents, obs_dims)]
+        obs = check(obs).to(**self.tpdv) 
+        batch_size = obs.shape[0]
+        # obtain batch (needed for graphnorm if being used), [shape: (batch_size * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (batch_size, num_agents, obs_dims)]  
-            obs = check(obs).to(**self.tpdv)
-            batch_size = obs.shape[0]
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (batch_size, num_agents, rni_dims)] 
-                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
-                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(batch_size)]).to(self.device) 
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (batch_size, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+            # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(**self.tpdv) if self.knn else edge_index
+            ) for i in range(batch_size)
+        ]).to(self.device)
         # [shape: (batch_size, num_agents, 1)]
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1)
         if available_actions is not None:
@@ -370,9 +394,39 @@ class GCMNetActor(nn.Module):
             obs_pred_list = []
         
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
-        # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(batch_size, self.num_agents, self.scmu_input_dims)
+        # --> gnn_layers [shape: (batch_size * num_agents, scmu_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
+        # [shape: (batch_size, num_agents, scmu_input_dims)]
+        gnn_output = gnn_output.reshape(batch_size, self.num_agents, self.scmu_input_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -667,51 +721,29 @@ class GCMNetActor(nn.Module):
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
-        if self.knn:
-            # [shape: (mini_batch_size, num_agents, obs_dims)]   
-            obs = check(obs)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * num_agents, obs_dims)] 
-            obs_temp = obs.reshape(mini_batch_size * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents \
-                                  for i in range(mini_batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, num_agents, rni_dims)]
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size,
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)  
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (mini_batch_size, num_agents, obs_dims)]
+        obs = check(obs).to(**self.tpdv) 
+        mini_batch_size = obs.shape[0]
+        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, num_agents, obs_dims(pre-rni))]   
-            obs = check(obs).to(**self.tpdv)
-            mini_batch_size = obs.shape[0]
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)] 
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)    
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size)]).to(self.device)
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (mini_batch_size, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(mini_batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+            # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(**self.tpdv) if self.knn else edge_index
+            ) for i in range(mini_batch_size)
+        ]).to(self.device)
         # [shape: (mini_batch_size, num_agents, action_space_dim)]  
         action = check(action).to(**self.tpdv)
         # [shape: (mini_batch_size * num_agents, action_space_dim)]
@@ -730,9 +762,38 @@ class GCMNetActor(nn.Module):
         if self.dynamics:
             obs_pred_list = []
 
-        # obs_gnn.x [shape: (mini_batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)
+        # obs_gnn.x [shape: (mini_batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
+        # --> gnn_layers [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
         # concat_output [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)] --> 
         # fc_layers [shape: (mini_batch_size * num_agents, fc_output_dims)]
         fc_output = self.fc_layers(gnn_output)
@@ -785,65 +846,41 @@ class GCMNetActor(nn.Module):
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         :return obs_pred: (torch.Tensor) observation predictions from dynamics models if used else None.
         """
-        if self.knn:
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
-            obs = check(obs)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
-            obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents \
-                                  for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)
-            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
-            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)]
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.data_chunk_length, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)  
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
-                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, 
-                                                self.num_agents, 
-                                                self.obs_dims + self.rni_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]
+        obs = check(obs).to(**self.tpdv) 
+        mini_batch_size = obs.shape[0]
+        # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
+        obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
+        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size * self.data_chunk_length)\
+                         .repeat_interleave(self.num_agents)\
+                         .to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims(pre-rni))]   
-            obs = check(obs).to(**self.tpdv)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
-            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)] 
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.data_chunk_length, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)    
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
-                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, 
-                                                self.num_agents, 
-                                                self.obs_dims + self.rni_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims))\
+                       .to(**self.tpdv)  
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+            obs_rni_batch = obs_rni.reshape(
+                mini_batch_size * self.data_chunk_length, 
+                self.num_agents, 
+                self.obs_dims + self.rni_dims
+            )
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
+                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(**self.tpdv) \
+                           if self.knn else edge_index
+            ) for i in range(mini_batch_size * self.data_chunk_length)
+        ]).to(self.device)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, action_space_dim)]  
         action = check(action).to(**self.tpdv) 
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
@@ -879,10 +916,40 @@ class GCMNetActor(nn.Module):
         if self.dynamics:
             obs_pred_list = []
 
-        # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
+        # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] 
+        # --> gnn_layers [shape: (mini_batch_size * data_chunk_length * num_agents, scmu_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
+        # [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
+        gnn_output = gnn_output.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):
@@ -1230,7 +1297,8 @@ class GCMNetCritic(nn.Module):
         self.gnn_cpa_model = args.gcmnet_gnn_cpa_model
         self.n_gnn_layers = args.gcmnet_n_gnn_layers
         self.n_gnn_fc_layers = args.gcmnet_n_gnn_fc_layers
-        self.train_eps = args.gcmnet_train_eps
+        self.gnn_train_eps = args.gcmnet_gnn_train_eps
+        self.gnn_norm = args.gcmnet_gnn_norm
 
         self.somu_actor = args.gcmnet_somu_actor
         self.scmu_actor = args.gcmnet_scmu_actor
@@ -1275,24 +1343,29 @@ class GCMNetCritic(nn.Module):
 
         # gnn layers
         if self.gnn_architecture == 'dna_gatv2':
-            self.gnn_layers = DNAGATv2Layers(input_channels=self.obs_dims + self.rni_dims if self.rni \
-                                                            else self.obs_dims, 
-                                             block=DNAGATv2Block, 
-                                             output_channels=[self.obs_dims + self.rni_dims if self.rni \
-                                                              else self.obs_dims for _ in range(self.n_gnn_layers)],
-                                             att_heads=self.gnn_att_heads,
-                                             mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
-                                             gnn_cpa_model=self.gnn_cpa_model)
+            self.gnn_layers = GNNDNALayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=DNAGATv2Block, 
+                output_channels=[self.obs_dims + self.rni_dims if self.rni else self.obs_dims \
+                                 for _ in range(self.n_gnn_layers)],
+                att_heads=self.gnn_att_heads,
+                mul_att_heads=self.gnn_dna_gatv2_multi_att_heads,
+                gnn_cpa_model=self.gnn_cpa_model,
+                norm_type=self.gnn_norm 
+            )
             # calculate relevant input dimensions
             self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
                                    if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
         elif self.gnn_architecture == 'gatv2':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GATv2Block, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           heads=self.gnn_att_heads,
-                                           concat=self.gnn_att_concat,
-                                           gnn_cpa_model=self.gnn_cpa_model)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GATv2Block, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                heads=self.gnn_att_heads,
+                concat=self.gnn_att_concat,
+                gnn_cpa_model=self.gnn_cpa_model,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
             if self.rni:
                 self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims * self.gnn_att_heads + self.obs_dims + \
@@ -1303,62 +1376,78 @@ class GCMNetCritic(nn.Module):
                                        if self.gnn_att_concat else \
                                        self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gin':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GINBlock, 
-                                           output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
-                                           n_gnn_fc_layers=self.n_gnn_fc_layers,
-                                           train_eps=self.train_eps)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GINBlock, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)], 
+                n_gnn_fc_layers=self.n_gnn_fc_layers,
+                train_eps=self.gnn_train_eps,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
             self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
                                    if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
         elif self.gnn_architecture == 'gain':
-            self.gnn_layers = GNNAllLayers(input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
-                                           block=GAINBlock, 
-                                           output_channels=[self.obs_dims + self.rni_dims if self.rni \
-                                                            else self.obs_dims for _ in range(self.n_gnn_layers)],
-                                           heads=self.gnn_att_heads, 
-                                           n_gnn_fc_layers=self.n_gnn_fc_layers)
+            self.gnn_layers = GNNAllLayers(
+                input_channels=self.obs_dims + self.rni_dims if self.rni else self.obs_dims, 
+                block=GAINBlock, 
+                output_channels=[self.gnn_output_dims for _ in range(self.n_gnn_layers)],
+                n_gnn_fc_layers=self.n_gnn_fc_layers,
+                heads=self.gnn_att_heads,
+                concat=self.gnn_att_concat,
+                norm_type=self.gnn_norm
+            )
             # calculate relevant input dimensions
-            self.scmu_input_dims = (self.n_gnn_layers + 1) * (self.obs_dims + self.rni_dims) \
-                                   if self.rni else (self.n_gnn_layers + 1) * self.obs_dims
+            self.scmu_input_dims = self.n_gnn_layers * self.gnn_output_dims + self.obs_dims + self.rni_dims \
+                                   if self.rni else self.n_gnn_layers * self.gnn_output_dims + self.obs_dims
 
         if self.somu_critic:
             # list of lstms for self observation memory unit (somu) for each agent
             # somu_lstm_input_size is the dimension of the observations
-            self.somu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.obs_dims, 
-                                                         hidden_size=self.somu_lstm_hidden_size, 
-                                                         num_layers=self.somu_n_layers, 
-                                                         batch_first=True,
-                                                         device=device)
-                                                 for _ in range(self.num_agents)])
+            self.somu_lstm_list = nn.ModuleList([
+                nn.LSTM(
+                    input_size=self.obs_dims, 
+                    hidden_size=self.somu_lstm_hidden_size, 
+                    num_layers=self.somu_n_layers, 
+                    batch_first=True,
+                    device=device
+                ) for _ in range(self.num_agents)
+            ])
             if self.somu_att_critic:
                 # multi-head self attention layer for somu to selectively choose between the lstms outputs
-                self.somu_multi_att_layer_list = \
-                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.somu_lstm_hidden_size, 
-                                                         num_heads=self.somu_multi_att_n_heads, 
-                                                         dropout=0, 
-                                                         batch_first=True, 
-                                                         device=device) 
-                                   for _ in range(self.num_agents)])
+                self.somu_multi_att_layer_list = nn.ModuleList([
+                    nn.MultiheadAttention(
+                        embed_dim=self.somu_lstm_hidden_size, 
+                        num_heads=self.somu_multi_att_n_heads, 
+                        dropout=0, 
+                        batch_first=True, 
+                        device=device
+                    ) for _ in range(self.num_agents)
+                ])
 
         if self.scmu_critic:
             # list of lstms for self communication memory unit (scmu) for each agent
             # somu_lstm_input_size are all layers of gnn
-            self.scmu_lstm_list = nn.ModuleList([nn.LSTM(input_size=self.scmu_input_dims, 
-                                                         hidden_size=self.scmu_lstm_hidden_size, 
-                                                         num_layers=self.scmu_n_layers, 
-                                                         batch_first=True,
-                                                         device=device)
-                                                 for _ in range(self.num_agents)])
+            self.scmu_lstm_list = nn.ModuleList([
+                nn.LSTM(
+                    input_size=self.scmu_input_dims, 
+                    hidden_size=self.scmu_lstm_hidden_size, 
+                    num_layers=self.scmu_n_layers, 
+                    batch_first=True,
+                    device=device
+                ) for _ in range(self.num_agents)
+            ])
             if self.scmu_att_critic:
                 # multi-head self attention layer for scmu to selectively choose between the lstms outputs
-                self.scmu_multi_att_layer_list = \
-                    nn.ModuleList([nn.MultiheadAttention(embed_dim=self.scmu_lstm_hidden_size, 
-                                                         num_heads=self.scmu_multi_att_n_heads, 
-                                                         dropout=0, 
-                                                         batch_first=True, 
-                                                         device=device) 
-                                   for _ in range(self.num_agents)])
+                self.scmu_multi_att_layer_list = nn.ModuleList([
+                    nn.MultiheadAttention(
+                        embed_dim=self.scmu_lstm_hidden_size, 
+                        num_heads=self.scmu_multi_att_n_heads, 
+                        dropout=0, 
+                        batch_first=True, 
+                        device=device
+                    ) for _ in range(self.num_agents)
+                ])
 
         # calculate input dimensions for fc layers
         if self.somu_critic == True and self.scmu_critic == True:
@@ -1431,12 +1520,15 @@ class GCMNetCritic(nn.Module):
 
         # shared hidden fc layers for to generate actions for each agent
         # fc_output_dims is the list of sizes of output channels fc_block
-        self.fc_layers = NNLayers(input_channels=self.fc_input_dims, 
-                                  block=MLPBlock, 
-                                  output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)], 
-                                  activation_func='relu', 
-                                  dropout_p=0, 
-                                  weight_initialisation="orthogonal" if self._use_orthogonal else "default")
+        self.fc_layers = NNLayers(
+            input_channels=self.fc_input_dims, 
+            block=MLPBlock, 
+            output_channels=[self.fc_output_dims for i in range(self.n_fc_layers)],
+            norm_type='none', 
+            activation_func='relu', 
+            dropout_p=0, 
+            weight_initialisation="orthogonal" if self._use_orthogonal else "default"
+        )
 
         def init_(m):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0))
@@ -1449,8 +1541,15 @@ class GCMNetCritic(nn.Module):
         
         self.to(device)
 
-    def forward(self, cent_obs, masks, somu_hidden_states_critic=None, somu_cell_states_critic=None, 
-                scmu_hidden_states_critic=None, scmu_cell_states_critic=None):
+    def forward(
+            self, 
+            cent_obs, 
+            masks, 
+            somu_hidden_states_critic=None, 
+            somu_cell_states_critic=None, 
+            scmu_hidden_states_critic=None, 
+            scmu_cell_states_critic=None
+        ):
         """
         Compute value function
         :param cent_obs: (np.ndarray / torch.Tensor) observation inputs into network.
@@ -1466,40 +1565,29 @@ class GCMNetCritic(nn.Module):
         :return scmu_hidden_states_critic: (torch.Tensor) hidden states for scmu network.
         :return scmu_cell_states_critic: (torch.Tensor) hidden states for scmu network.
         """
-        if self.knn:
-            # [shape: (batch_size, num_agents, obs_dims)]
-            obs = check(cent_obs) 
-            batch_size = obs.shape[0]
-            # [shape: (batch_size * num_agents, obs_dims)]
-            obs_temp = obs.reshape(batch_size * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents for i in range(batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)  
-            if self.rni:
-                # zero mean std 1 gaussian noise
-                # [shape: (batch_size, num_agents, rni_dims)] 
-                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
-                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(batch_size)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (batch_size, num_agents, obs_dims)]
+        obs = check(cent_obs).to(**self.tpdv) 
+        batch_size = obs.shape[0]
+        # obtain batch (needed for graphnorm if being used), [shape: (batch_size * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (batch_size, num_agents, obs_dims)]  
-            obs = check(cent_obs).to(**self.tpdv)
-            batch_size = obs.shape[0]
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (batch_size, num_agents, rni_dims)] 
-                rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
-                # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(batch_size)]).to(self.device)
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (batch_size, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+            # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(**self.tpdv) if self.knn else edge_index
+            ) for i in range(batch_size)
+        ]).to(self.device)
         # shape: (batch_size, num_agents, 1)
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1)
         if self.somu_critic:
@@ -1524,9 +1612,39 @@ class GCMNetCritic(nn.Module):
         values_list = []
        
         # obs_gnn.x [shape: (batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
-        # --> gnn_layers [shape: (batch_size, num_agents, scmu_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(batch_size, self.num_agents, self.scmu_input_dims)
+        # --> gnn_layers [shape: (batch_size * num_agents, scmu_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
+        # [shape: (batch_size, num_agents, scmu_input_dims)]
+        gnn_output = gnn_output.reshape(batch_size, self.num_agents, self.scmu_input_dims)
        
         # iterate over agents 
         for i in range(self.num_agents):
@@ -1782,55 +1900,62 @@ class GCMNetCritic(nn.Module):
 
         :return values: (torch.Tensor) value function predictions.
         """
-        if self.knn:
-            # [shape: (mini_batch_size, num_agents, obs_dims)]   
-            obs = check(cent_obs)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * num_agents, obs_dims)] 
-            obs_temp = obs.reshape(mini_batch_size * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents \
-                                  for i in range(mini_batch_size * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, num_agents, rni_dims)]
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size,
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)  
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (mini_batch_size, num_agents, obs_dims)]
+        obs = check(cent_obs).to(**self.tpdv) 
+        mini_batch_size = obs.shape[0]
+        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, num_agents, obs_dims(pre-rni))]   
-            obs = check(cent_obs).to(**self.tpdv)
-            mini_batch_size = obs.shape[0]
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)] 
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)    
-                # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size)]).to(self.device)
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (mini_batch_size, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(mini_batch_size, self.num_agents, self.rni_dims)).to(**self.tpdv)  
+            # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(**self.tpdv) if self.knn else edge_index
+            ) for i in range(mini_batch_size)
+        ]).to(self.device)
 
-        # obs_gnn.x [shape: (mini_batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)
+        # obs_gnn.x [shape: (mini_batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
+        # --> gnn_layers [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
         # concat_output [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)] --> 
         # fc_layers [shape: (mini_batch_size * num_agents, fc_output_dims)]
         fc_output = self.fc_layers(gnn_output)
@@ -1854,66 +1979,41 @@ class GCMNetCritic(nn.Module):
 
         :return values: (torch.Tensor) value function predictions.
         """
-        if self.knn:
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
-            obs = check(cent_obs)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims)] 
-            obs_temp = obs.reshape(mini_batch_size * self.data_chunk_length * self.num_agents, self.obs_dims)
-            batch = torch.tensor([i // self.num_agents \
-                                  for i in range(mini_batch_size * self.data_chunk_length * self.num_agents)])
-            edge_index = knn_graph(x=obs_temp, k=self.k, batch=batch, loop=True)
-            obs = obs.to(**self.tpdv)
-            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
-            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)] 
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.data_chunk_length, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)      
-                # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
-                obs_rni = torch.cat((obs, rni), dim=-1)
-                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
-                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, 
-                                                self.num_agents, 
-                                                self.obs_dims + self.rni_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
-        else:
-            # obtain edge index
+        # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]
+        obs = check(cent_obs).to(**self.tpdv) 
+        mini_batch_size = obs.shape[0]
+        # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
+        obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
+        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size * self.data_chunk_length)\
+                         .repeat_interleave(self.num_agents)\
+                         .to(self.device)
+        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
+        if not self.knn:
             edge_index = complete_graph_edge_index(self.num_agents) 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
-            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims)]   
-            obs = check(cent_obs).to(**self.tpdv)
-            mini_batch_size = obs.shape[0]
-            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
-            obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-            if self.rni:
-                # zero mean std 1 gaussian noise 
-                # shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims) 
-                rni = torch.normal(mean=0, 
-                                   std=1, 
-                                   size=(mini_batch_size, 
-                                         self.data_chunk_length, 
-                                         self.num_agents, 
-                                         self.rni_dims)
-                                  ).to(**self.tpdv)      
-                # shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)
-                obs_rni = torch.cat((obs, rni), dim=-1)
-                # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
-                obs_rni_batch = obs_rni.reshape(mini_batch_size * self.data_chunk_length, 
-                                                self.num_agents, 
-                                                self.obs_dims + self.rni_dims)
-            obs_gnn = Batch.from_data_list([Data(x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                                                 edge_index=edge_index) 
-                                            for i in range(mini_batch_size * self.data_chunk_length)]).to(self.device)
-        
+        # random node initialisation
+        if self.rni:
+            # zero mean std 1 gaussian noise, [shape: (mini_batch_size, data_chunk_length, num_agents, rni_dims)] 
+            rni = torch.normal(0, 1, size=(mini_batch_size, self.data_chunk_length, self.num_agents, self.rni_dims))\
+                       .to(**self.tpdv)  
+            # [shape: (mini_batch_size, data_chunk_length, num_agents, obs_dims + rni_dims)]
+            obs_rni = torch.cat((obs, rni), dim=-1)
+            # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims + rni_dims)] 
+            obs_rni_batch = obs_rni.reshape(
+                mini_batch_size * self.data_chunk_length, 
+                self.num_agents, 
+                self.obs_dims + self.rni_dims
+            )
+        # gnn batched observations 
+        obs_gnn = Batch.from_data_list([
+            Data(
+                x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
+                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(**self.tpdv) \
+                           if self.knn else edge_index
+            ) for i in range(mini_batch_size * self.data_chunk_length)
+        ]).to(self.device)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
         if self.somu_critic:
@@ -1931,10 +2031,40 @@ class GCMNetCritic(nn.Module):
         # list to store values
         values_list = []
 
-        # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] -->
-        # gnn_layers [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
-        gnn_output = self.gnn_layers(x=obs_gnn.x, edge_index=obs_gnn.edge_index)\
-                         .reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
+        # obs_gnn.x [shape: (mini_batch_size * data_chunk_length * num_agents, obs_dims / (obs_dims + rni_dims))] 
+        # --> gnn_layers [shape: (mini_batch_size * data_chunk_length * num_agents, scmu_input_dims)] 
+        if self.gnn_architecture == 'dna_gatv2' or self.gnn_architecture == 'gatv2' or self.gnn_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    edge_attr=None, 
+                    return_attention_weights=None
+                )
+        elif self.gnn_architecture == 'gin':
+            if self.gnn_norm == 'graphnorm':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None, 
+                    batch=batch
+                )
+            elif self.gnn_norm == 'none':
+                gnn_output = self.gnn_layers(
+                    x=obs_gnn.x, 
+                    edge_index=obs_gnn.edge_index, 
+                    size=None
+                )
+        # [shape: (mini_batch_size, data_chunk_length, num_agents, scmu_input_dims)]
+        gnn_output = gnn_output.reshape(mini_batch_size, self.data_chunk_length, self.num_agents, self.scmu_input_dims)
 
         # iterate over agents 
         for i in range(self.num_agents):

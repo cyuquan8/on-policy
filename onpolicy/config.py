@@ -79,23 +79,25 @@ def get_config():
 
     GCMNet parameters:
         --gcmnet_gnn_architecture <str> 
-            Architecture for GNN layers in GCMNet, (default: "dna_gatv2")
+            Architecture for GNN layers in GCMNet, (default: "gain")
         --gcmnet_gnn_output_dims
             Hidden Size for GNN layers for actor and critic network, (default: 64)
         --gcmnet_gnn_att_heads <int>
-            Number of attention heads for GNN architecture with suitable attention mechanism, (default: 1)
+            Number of attention heads for GNN architecture with suitable attention mechanism, (default: 8)
         --gcmnet_gnn_dna_gatv2_multi_att_heads <int>
             Number of attention heads for DNAGATv2 Multi-Head Attention for DNA, (default: 1)
         --gcmnet_gnn_att_concat
             Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism, (default: False)
         --gcmnet_cpa_model <str>
-            Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism, (default: 'f_additive')
+            Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism, (default: 'none')
         --gcmnet_n_gnn_layers <int>
-            Number of GNN layers for GCMNet actor and critic network, (default: 2)
+            Number of GNN layers for GCMNet actor and critic network, (default: 8)
         --gcmnet_n_gnn_fc_layers <int>
             Number of MLP layers for MLP in suitable GNN architecture (GINConv, GAINConv), (default: 2)
-        --gcmnet_train_eps
+        --gcmnet_gnn_train_eps
             Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv), (default: False)
+        --gcmnet_gnn_norm
+            Normalisation for GNN, (default: 'none')
         --gcmnet_somu_actor
             Whether to use Self Observation Memory Unit (SOMU) in GCMNet for actor network, (default: False)
         --gcmnet_scmu_actor
@@ -121,19 +123,19 @@ def get_config():
         --gcmnet_scmu_att_critic
             Whether to use to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network, (default: False)
         --gcmnet_somu_n_layers <int>
-            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet, (default: 2)
+            Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet, (default: 4)
         --gcmnet_somu_lstm_hidden_size <int>
-            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet, (default: 128)
+            Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet, (default: 64)
         --gcmnet_somu_multi_att_n_heads <int>
-            Number of Heads for Multi-Attention for SOMU outputs in GCMNet, (default: 2)
+            Number of Heads for Multi-Attention for SOMU outputs in GCMNet, (default: 8)
         --gcmnet_scmu_n_layers <int>
-            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet, (default: 2)
+            Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet, (default: 4)
         --gcmnet_scmu_lstm_hidden_size <int>
-            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet, (default: 128)
+            Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet, (default: 64)
         --gcmnet_scmu_multi_att_n_heads <int>
-            Number of Heads for Multi-Attention for SCMU outputs in GCMNet, (default: 2)
+            Number of Heads for Multi-Attention for SCMU outputs in GCMNet, (default: 8)
         --gcmnet_fc_output_dims <int>
-            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 128)
+            Hidden Size for MLP layers in GCMNet actor and critic network, (default: 64)
         --gcmnet_n_fc_layers <int>
             Number of MLP layers in GCMNet actor and critic network, (default: 2)
         --gcmnet_knn
@@ -306,15 +308,16 @@ def get_config():
                         help="The gain # of last action layer")
 
     # gcmnet network parameters
-    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='dna_gatv2', choices=["dna_gatv2", "gin", "gatv2", "gain"], help="Architecture for GNN layers in GCMNet")
+    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='gain', choices=['dna_gatv2', 'gin', 'gatv2', 'gain'], help="Architecture for GNN layers in GCMNet")
     parser.add_argument("--gcmnet_gnn_output_dims", type=int, default=64, help="Hidden Size for GNN layers for actor and critic network")
-    parser.add_argument("--gcmnet_gnn_att_heads", type=int, default=1, help="Number of attention heads for GNN architecture with suitable attention mechanism")
+    parser.add_argument("--gcmnet_gnn_att_heads", type=int, default=8, help="Number of attention heads for GNN architecture with suitable attention mechanism")
     parser.add_argument("--gcmnet_gnn_dna_gatv2_multi_att_heads", type=int, default=1, help="Number of attention heads for DNAGATv2 Multi-Head Attention for DNA")
     parser.add_argument("--gcmnet_gnn_att_concat", action='store_true', default=False, help="Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism")
-    parser.add_argument("--gcmnet_gnn_cpa_model", type=str, default='f_additive', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism")
-    parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=2, help="Number of GNN layers for GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_gnn_cpa_model", type=str, default='none', choices=["none", "f_additive"], help="Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism")
+    parser.add_argument("--gcmnet_n_gnn_layers", type=int, default=8, help="Number of GNN layers for GCMNet actor and critic network")
     parser.add_argument("--gcmnet_n_gnn_fc_layers", type=int, default=2, help="Number of MLP layers for MLP in suitable GNN architecture (GINConv, GAINConv)")
-    parser.add_argument("--gcmnet_train_eps", action='store_true', default=False, help="Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv)")
+    parser.add_argument("--gcmnet_gnn_train_eps", action='store_true', default=False, help="Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv)")
+    parser.add_argument("--gcmnet_gnn_norm", type=str, default='none', choices=['none', 'graphnorm'], help="Normalisation for GNN")
     parser.add_argument("--gcmnet_somu_actor", action='store_true', default=False, help="Whether to use Self Observation Memory Unit (SOMU) in GCMNet for actor network")
     parser.add_argument("--gcmnet_scmu_actor", action='store_true', default=False, help="Whether to use Self Communication Memory Unit (SCMU) in GCMNet for actor network")
     parser.add_argument("--gcmnet_somu_critic", action='store_true', default=False, help="Whether to use Self Observation Memory Unit (SOMU) in GCMNet for critic network")
@@ -327,13 +330,13 @@ def get_config():
     parser.add_argument("--gcmnet_scmu_att_actor", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for actor network")
     parser.add_argument("--gcmnet_somu_att_critic", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Observation Memory Unit (SOMU) in GCMNet for critic network")
     parser.add_argument("--gcmnet_scmu_att_critic", action='store_true', default=False, help="Whether to use self-attention output from hidden and cell states of Self Communication Memory Unit (SCMU) in GCMNet for critic network")
-    parser.add_argument("--gcmnet_somu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet")
-    parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet")
-    parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SOMU outputs in GCMNet")
-    parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=2, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet")
-    parser.add_argument("--gcmnet_scmu_lstm_hidden_size", type=int, default=128, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet")
-    parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=2, help="Number of Heads for Multi-Head Attention for SCMU outputs in GCMNet")
-    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=128, help="Hidden Size for MLP layers in GCMNet actor and critic network")
+    parser.add_argument("--gcmnet_somu_n_layers", type=int, default=4, help="Number of layers of LSTMs in Self Observation Memory Unit (SOMU) in GCMNet")
+    parser.add_argument("--gcmnet_somu_lstm_hidden_size", type=int, default=64, help="Hidden Size for Self Observation Memory Unit (SOMU) LSTMs in GCMNet")
+    parser.add_argument("--gcmnet_somu_multi_att_n_heads", type=int, default=8, help="Number of Heads for Multi-Head Attention for SOMU outputs in GCMNet")
+    parser.add_argument("--gcmnet_scmu_n_layers", type=int, default=4, help="Number of layers of LSTMs in Self Communication Memory Unit (SCMU) in GCMNet")
+    parser.add_argument("--gcmnet_scmu_lstm_hidden_size", type=int, default=64, help="Hidden Size for Self Communication Memory Unit (SCMU) LSTMs in GCMNet")
+    parser.add_argument("--gcmnet_scmu_multi_att_n_heads", type=int, default=8, help="Number of Heads for Multi-Head Attention for SCMU outputs in GCMNet")
+    parser.add_argument("--gcmnet_fc_output_dims", type=int, default=64, help="Hidden Size for MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_n_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
     parser.add_argument("--gcmnet_k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")

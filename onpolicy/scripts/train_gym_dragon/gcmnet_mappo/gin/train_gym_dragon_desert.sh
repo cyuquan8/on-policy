@@ -1,8 +1,8 @@
 #!/bin/sh
 seed_max=0
-env="gym_dragon"
-algo="gcmnet_mappo"
-user="cyuquan8"
+env='gym_dragon'
+algo='gcmnet_mappo'
+user='cyuquan8'
 n_training_threads=1
 n_rollout_threads=32
 num_env_steps=10000000000
@@ -14,13 +14,14 @@ ppo_epoch=2
 clip_param=0.2
 eval_episodes=32
 
-gcmnet_gnn_architecture="gin"
-gcmnet_gnn_output_dims=64
+gcmnet_gnn_architecture='gatv2'
+gcmnet_gnn_output_dims=64  
 gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=4
 gcmnet_n_gnn_fc_layers=2
+gcmnet_gnn_norm='graphnorm'
 gcmnet_somu_n_layers=4
 gcmnet_somu_lstm_hidden_size=64
 gcmnet_somu_multi_att_n_heads=8
@@ -37,7 +38,7 @@ gcmnet_dynamics_loss_coef=0.01
 gcmnet_dynamics_reward_coef=1
 
 episode_length=480
-region="desert"
+region='desert'
 recon_phase_length=0
 seconds_per_timestep=2.0
 
@@ -58,7 +59,8 @@ beacon_reward_weight=0.01
 proximity_reward_weight=0.01
 
 exp="gnn_arch_${gcmnet_gnn_architecture}_\
-n_gnn_fc_lyrs_${gcmnet_n_gnn_fc_layers}_\
+gnn_att_heads_${gcmnet_gnn_att_heads}_\
+cpa_model_${gcmnet_cpa_model}_\
 n_gnn_lyrs_${gcmnet_n_gnn_layers}_\
 ep_len_${episode_length}_\
 data_chunk_len_${data_chunk_length}_\
@@ -93,6 +95,7 @@ if [ "$seed_max" -eq 0 ]; then
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+    --gcmnet_gnn_norm ${gcmnet_gnn_norm}\
     --gcmnet_somu_actor\
     --gcmnet_scmu_actor\
     --gcmnet_somu_critic\
@@ -217,6 +220,7 @@ else
         --gcmnet_cpa_model ${gcmnet_cpa_model}\
         --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
         --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+        --gcmnet_gnn_norm ${gcmnet_gnn_norm}\
         --gcmnet_somu_actor\
         --gcmnet_scmu_actor\
         --gcmnet_somu_critic\

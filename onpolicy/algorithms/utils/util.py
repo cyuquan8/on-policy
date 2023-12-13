@@ -20,14 +20,8 @@ def complete_graph_edge_index(num_nodes):
     """ 
     function to generate the edge index of a complete graph given the number of nodes 
     """
-    # empty list to store edge index
-    edge_index = []
-
-    # iterate over num_nodes
-    for i in range(num_nodes):
-        # iterate over num_nodes
-        for j in range(num_nodes):
-            # append edge index
-            edge_index.append([i, j])
-
-    return np.array(edge_index)
+    nodes = np.arange(num_nodes)
+    i, j = np.meshgrid(nodes, nodes)
+    edges = np.column_stack((i.flatten(), j.flatten()))
+    
+    return edges

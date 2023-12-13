@@ -1,9 +1,9 @@
 #!/bin/sh
-env="StarCraft2"
-map="3s_vs_4z"
-algo="gcmnet_mappo"
+env='StarCraft2'
+map='3s_vs_4z'
+algo='gcmnet_mappo'
 seed_max=1
-user="cyuquan8"
+user='cyuquan8'
 n_training_threads=1
 n_rollout_threads=8
 num_env_steps=10000000
@@ -16,13 +16,14 @@ ppo_epoch=4
 clip_param=0.2
 eval_episodes=32
 
-gcmnet_gnn_architecture="gatv2"
+gcmnet_gnn_architecture='gatv2'
 gcmnet_gnn_output_dims=64
 gcmnet_gnn_att_heads=8
 gcmnet_gnn_dna_gatv2_multi_att_heads=1
 gcmnet_cpa_model='f_additive'
 gcmnet_n_gnn_layers=8
 gcmnet_n_gnn_fc_layers=2
+gcmnet_gnn_norm='graphnorm'
 gcmnet_somu_n_layers=4
 gcmnet_somu_lstm_hidden_size=64
 gcmnet_somu_multi_att_n_heads=8
@@ -75,6 +76,7 @@ do
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
+    --gcmnet_gnn_norm ${gcmnet_gnn_norm}\
     --gcmnet_somu_actor\
     --gcmnet_scmu_actor\
     --gcmnet_somu_critic\

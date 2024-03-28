@@ -112,7 +112,7 @@ dependencies:
       - tensorboardx==2.6
       - threadpoolctl==3.1.0
       - tifffile==2023.4.12
-      - torch-geometric==2.4.0
+      - torch-geometric==2.5.2
       - tqdm==4.65.0
       - triton==2.0.0
       - typer==0.9.0
@@ -120,8 +120,8 @@ dependencies:
       - tzdata==2023.3
       - urllib3==1.26.13
       - virtualenv==20.21.0
-      - wandb==0.16.2
+      - wandb==0.16.5
       - websocket-client==1.5.2
 prefix: /home/cyuquan8/miniconda3/envs/on_policy
 # pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
-# pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cpu.html
+# pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html

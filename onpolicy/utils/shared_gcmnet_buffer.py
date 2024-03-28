@@ -494,6 +494,14 @@ class SharedGCMNetReplayBuffer(object):
                   active_masks_batch, old_action_log_probs_batch, adv_targ, available_actions_batch, \
                   obs_pred_mask_batch, obs_pred_target_batch
 
+    def naive_recurrent_generator(self, advantages, num_mini_batch):
+        """
+        Yield training data for non-chunked RNN training.
+        :param advantages: (np.ndarray) advantage estimates.
+        :param num_mini_batch: (int) number of minibatches to split the batch into.
+        """
+        raise NotImplementedError("naive_recurrent_generator not implemented for GCMNet")
+
     def recurrent_generator(self, advantages, num_mini_batch, data_chunk_length):
         """
         Yield training data for chunked RNN / LSTM training.

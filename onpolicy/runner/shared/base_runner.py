@@ -3,7 +3,6 @@ import os
 import torch
 import wandb
 
-from onpolicy.utils.shared_buffer import SharedReplayBuffer
 from tensorboardX import SummaryWriter
 
 def _t2n(x):
@@ -71,10 +70,16 @@ class Runner(object):
                 if not os.path.exists(self.save_dir):
                     os.makedirs(self.save_dir)
 
-        from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
-        from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+        if self.algorithm_name == 'commnet_mappo':
+            from onpolicy.algorithms.commnet_mappo.commnet_mappo import CommNet_MAPPO as TrainAlgo
+            from onpolicy.algorithms.commnet_mappo.algorithm.commnetMAPPOPolicy import CommNet_MAPPOPolicy as Policy
+            from onpolicy.utils.shared_commnet_buffer import SharedCommNetReplayBuffer as SharedReplayBuffer
+        else:
+            from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
+            from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+            from onpolicy.utils.shared_buffer import SharedReplayBuffer
 
-        if self.all_args.env_name == 'gym_dragon':
+        if self.env_name == 'gym_dragon':
             share_observation_space = self.envs.share_observation_space if self.use_centralized_V else self.envs.observation_space
 
             self.all_args.num_agents = self.num_agents

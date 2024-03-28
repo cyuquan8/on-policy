@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcmnet_mappo"]`
+            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -158,25 +158,11 @@ def get_config():
             Coefficient for dynamics model loss, (default: 0.01)
         --gcmnet_dynamics_reward_coef
             Coefficient for intrinsic exploration reward from disagreement via variance, (default: 1)
-
-    MuDMAF parameters:
-        --mudmaf_conv_output_dims <int>
-            Output dimensions for convolutions in MuDMAF network (default: 256)
-        --mudmaf_n_vgg_conv_layers <int>
-            Number of VGG-based convolution layers in MuDMAF network (default: 256)
-        --mudmaf_vgg_conv_kernel_size <int>
-            Kernel size for convolution in convolution layers in MuDMAF network (default: 3)
-        --mudmaf_vgg_maxpool_kernel_size <int>
-            Maxpool kernel size for convolution in convolution layers in MuDMAF network (default: 2)
-        --mudmaf_n_goal_fc_layers <int>
-            Number of MLP layers for goal features (default: 2)
-        --mudmaf_n_post_concat_fc_layers <int>
-            Number of MLP layers for features post concatenation of observation and goal features (default: 2)
-        --mudmaf_lstm_hidden_size <int>
-            Hidden size for LSTM in MuDMAF network (default: 512)
-        --mudmaf_lstm_n_layers <int>
-            Number of layers for LSTM in MuDMAF network (default: 1)
     
+    CommNet parameters:
+        --commnet_k
+            Number of communication rounds in CommNet, (default: 3)
+
     Optimizer parameters:
         --lr <float>
             learning rate parameter,  (default: 5e-4, fixed).
@@ -254,7 +240,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo", "ippo","gcmnet_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -308,7 +294,7 @@ def get_config():
                         help="The gain # of last action layer")
 
     # gcmnet network parameters
-    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='gain', choices=['dna_gatv2', 'gin', 'gatv2', 'gain'], help="Architecture for GNN layers in GCMNet")
+    parser.add_argument("--gcmnet_gnn_architecture", type=str, default='gain', choices=['dna_gatv2', 'gcn', 'gat', 'gatv2', 'gain', 'gin'], help="Architecture for GNN layers in GCMNet")
     parser.add_argument("--gcmnet_gnn_output_dims", type=int, default=64, help="Hidden Size for GNN layers for actor and critic network")
     parser.add_argument("--gcmnet_gnn_att_heads", type=int, default=8, help="Number of attention heads for GNN architecture with suitable attention mechanism")
     parser.add_argument("--gcmnet_gnn_dna_gatv2_multi_att_heads", type=int, default=1, help="Number of attention heads for DNAGATv2 Multi-Head Attention for DNA")
@@ -349,15 +335,8 @@ def get_config():
     parser.add_argument("--gcmnet_dynamics_loss_coef", type=float, default=0.01, help="Coefficient for dynamics model loss")
     parser.add_argument("--gcmnet_dynamics_reward_coef", type=float, default=1, help="Coefficient for intrinsic exploration reward from disagreement via variance")
 
-    # mudmaf network parameters
-    parser.add_argument("--mudmaf_conv_output_dims", type=int, default=256, help="Output dimensions for convolutions in MuDMAF network")
-    parser.add_argument("--mudmaf_n_vgg_conv_layers", type=int, default=2, help="Number of VGG-based convolution layers in MuDMAF network")
-    parser.add_argument("--mudmaf_vgg_conv_kernel_size", type=int, default=3, help="Kernel size for convolution in convolution layers in MuDMAF network")
-    parser.add_argument("--mudmaf_vgg_maxpool_kernel_size", type=int, default=2, help="Maxpool kernel size for convolution in convolution layers in MuDMAF network")
-    parser.add_argument("--mudmaf_n_goal_fc_layers", type=int, default=2, help="Number of MLP layers for goal features")
-    parser.add_argument("--mudmaf_n_post_concat_fc_layers", type=int, default=2, help="Number of MLP layers for features post concatenation of observation and goal features")
-    parser.add_argument("--mudmaf_lstm_hidden_size", type=int, default=512, help="Hidden size for LSTM in MuDMAF network")
-    parser.add_argument("--mudmaf_lstm_n_layers", type=int, default=1, help="Number of layers for LSTM in MuDMAF network")
+    # commnet network parameters (use hidden_size in network parameters)
+    parser.add_argument("--commnet_k", type=int, default=3, help="Number of communication rounds in CommNet")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

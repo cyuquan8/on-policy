@@ -1,3 +1,4 @@
+import typing
 from typing import Callable, Optional, Tuple, Union
 
 import torch
@@ -10,6 +11,7 @@ from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.nn.inits import glorot, reset
 from torch_geometric.typing import (
     Adj,
+    NoneType,
     OptTensor,
     PairTensor,
     SparseTensor,
@@ -23,6 +25,11 @@ from torch_geometric.utils import (
 )
 from torch_geometric.utils.sparse import set_sparse_value
 
+if typing.TYPE_CHECKING:
+    from typing import overload
+else:
+    from torch.jit import _overload_method as overload
+
 
 class GAINConv(MessagePassing):
     r"""
@@ -32,7 +39,10 @@ class GAINConv(MessagePassing):
             shape :obj:`[-1, out_channels]`, *e.g.*, defined by
             :class:`torch.nn.Sequential`.
         nn_norm_type (str): Normalisation used for nn
-        in_channels (int): Size of each input sample.
+        in_channels (int or tuple): Size of each input sample, or :obj:`-1` to
+            derive the size from the first input(s) to the forward method.
+            A tuple corresponds to the sizes of source and target
+            dimensionalities in case of a bipartite graph.
         out_channels (int): Size of each output sample.
         heads (int, optional): Number of multi-head-attentions.
             (default: :obj:`1`)
@@ -57,33 +67,49 @@ class GAINConv(MessagePassing):
             aggregating all features of edges that point to the specific node,
             according to a reduce operation. (:obj:`"add"`, :obj:`"mean"`,
             :obj:`"min"`, :obj:`"max"`, :obj:`"mul"`). (default: :obj:`"mean"`)
+        bias (bool, optional): If set to :obj:`False`, the layer will not learn
+            an additive bias. (default: :obj:`True`)
         share_weights (bool, optional): If set to :obj:`True`, the same matrix
-            will be applied to the source and the target node of every edge.
+            will be applied to the source and the target node of every edge,
+            *i.e.* :math:`\mathbf{\Theta}_{s} = \mathbf{\Theta}_{t}`.
             (default: :obj:`False`)
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.MessagePassing`.
-    """
-    _alpha: OptTensor
 
+    Shapes:
+        - **input:**
+          node features :math:`(|\mathcal{V}|, F_{in})` or
+          :math:`((|\mathcal{V_s}|, F_{s}), (|\mathcal{V_t}|, F_{t}))`
+          if bipartite,
+          edge indices :math:`(2, |\mathcal{E}|)`,
+          edge features :math:`(|\mathcal{E}|, D)` *(optional)*
+        - **output:** node features :math:`(|\mathcal{V}|, H * F_{out})` or
+          :math:`((|\mathcal{V}_t|, H * F_{out})` if bipartite.
+          If :obj:`return_attention_weights=True`, then
+          :math:`((|\mathcal{V}|, H * F_{out}),
+          ((2, |\mathcal{E}|), (|\mathcal{E}|, H)))`
+          or :math:`((|\mathcal{V_t}|, H * F_{out}), ((2, |\mathcal{E}|),
+          (|\mathcal{E}|, H)))` if bipartite
+    """
     def __init__(
         self,
         nn: Callable,
-        nn_norm_type: str, 
-        in_channels: int,
+        nn_norm_type: str,
+        in_channels: Union[int, Tuple[int, int]],
         out_channels: int,
         heads: int = 1,
-        concat: bool = True,  
+        concat: bool = True,
         negative_slope: float = 0.2,
         dropout: float = 0.0,
         add_self_loops: bool = True,
         edge_dim: Optional[int] = None,
         fill_value: Union[float, Tensor, str] = 'mean',
+        bias: bool = True,
         share_weights: bool = False,
         **kwargs,
     ):
         super().__init__(node_dim=0, **kwargs)
 
-        # gain attributes
         self.nn = nn
         self.nn_norm_type = nn_norm_type
         self.in_channels = in_channels
@@ -98,26 +124,35 @@ class GAINConv(MessagePassing):
         self.share_weights = share_weights
 
         # linear layer for source and target nodes
-        self.lin_l = Linear(in_channels, heads * in_channels, bias=True, weight_initializer='glorot')
-        if share_weights:
-            self.lin_r = self.lin_l
+        if isinstance(in_channels, int):
+            self.lin_l = Linear(in_channels, heads * in_channels, bias=bias,
+                                weight_initializer='glorot')
+            if share_weights:
+                self.lin_r = self.lin_l
+            else:
+                self.lin_r = Linear(in_channels, heads * in_channels,
+                                    bias=bias, weight_initializer='glorot')
         else:
-            self.lin_r = Linear(in_channels, heads * in_channels, bias=True, weight_initializer='glorot')
+            self.lin_l = Linear(in_channels[0], heads * in_channels,
+                                bias=bias, weight_initializer='glorot')
+            if share_weights:
+                self.lin_r = self.lin_l
+            else:
+                self.lin_r = Linear(in_channels[1], heads * in_channels,
+                                    bias=bias, weight_initializer='glorot')
 
-        # parameter layer post leaky relu that is node independent
-        self.att = Parameter(torch.Tensor(1, heads, in_channels))
+        # node independent parameters to calculate attention coefficients
+        self.att = Parameter(torch.empty(1, heads, in_channels))
 
         # linear layer for edge dimensions
         if edge_dim is not None:
-            self.lin_edge = Linear(edge_dim, heads * in_channels, bias=False, weight_initializer='glorot')
+            self.lin_edge = Linear(edge_dim, heads * in_channels, bias=False,
+                                   weight_initializer='glorot')
         else:
             self.lin_edge = None
 
         # no bias
         self.register_parameter('bias', None)
-
-        # attribute for attention score
-        self._alpha = None
 
         self.reset_parameters()
 
@@ -130,59 +165,91 @@ class GAINConv(MessagePassing):
             self.lin_edge.reset_parameters()
         glorot(self.att)
 
+    @overload
     def forward(
-            self, 
-            x: Union[Tensor, PairTensor], 
-            edge_index: Adj,
-            edge_attr: OptTensor = None,
-            return_attention_weights: bool = None,
-            batch: OptTensor = None
-        ):
-        # type: (Union[Tensor, PairTensor], Tensor, OptTensor, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, PairTensor], SparseTensor, OptTensor, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, PairTensor], Tensor, OptTensor, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
-        # type: (Union[Tensor, PairTensor], SparseTensor, OptTensor, bool) -> Tuple[Tensor, SparseTensor]  # noqa
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Adj,
+        edge_attr: OptTensor = None,
+        return_attention_weights: NoneType = None,
+        batch: OptTensor = None,
+    ) -> Tensor:
+        pass
+
+    @overload
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Tensor,
+        edge_attr: OptTensor = None,
+        return_attention_weights: bool = None,
+        batch: OptTensor = None,
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
+        pass
+
+    @overload
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: SparseTensor,
+        edge_attr: OptTensor = None,
+        return_attention_weights: bool = None,
+        batch: OptTensor = None,
+    ) -> Tuple[Tensor, SparseTensor]:
+        pass
+
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Adj,
+        edge_attr: OptTensor = None,
+        return_attention_weights: Optional[bool] = None,
+        batch: OptTensor = None,
+    ) -> Union[
+            Tensor,
+            Tuple[Tensor, Tuple[Tensor, Tensor]],
+            Tuple[Tensor, SparseTensor],
+    ]:
         r"""Runs the forward pass of the module.
 
         Args:
+            x (torch.Tensor or (torch.Tensor, torch.Tensor)): The input node
+                features.
+            edge_index (torch.Tensor or SparseTensor): The edge indices.
+            edge_attr (torch.Tensor, optional): The edge features.
+                (default: :obj:`None`)
             return_attention_weights (bool, optional): If set to :obj:`True`,
                 will additionally return the tuple
                 :obj:`(edge_index, attention_weights)`, holding the computed
                 attention weights for each edge. (default: :obj:`None`)
         """
         # get source and target embeddings and pass them to linear layers
+        # (num_nodes, in_channels)
         x_l: OptTensor = None
         x_r: OptTensor = None
+        # (num_nodes, in_channels) --> (num_nodes, att_heads, in_channels)
         x_lin_l: OptTensor = None
         x_lin_r: OptTensor = None
         if isinstance(x, Tensor):
             assert x.dim() == 2
-            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, in_channels]
             x_lin_l = self.lin_l(x).view(-1, self.heads, self.in_channels)
-            # same matrix applied to the source and the target node of every edge
             if self.share_weights:
                 x_lin_r = x_lin_l
             else:
-                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, in_channels]
                 x_lin_r = self.lin_r(x).view(-1, self.heads, self.in_channels)
-            # [shape: num_nodes, in_channels]
             x_l = x
             x_r = x
         else:
-            # [shape: num_nodes, in_channels]
             x_l, x_r = x[0], x[1]
             assert x[0].dim() == 2
-            # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, in_channels]
             x_lin_l = self.lin_l(x).view(-1, self.heads, self.in_channels)
             if x_r is not None:
-                # [shape: num_nodes, in_channels] --> [shape: num_nodes, att_heads, in_channels]
                 x_lin_r = self.lin_r(x).view(-1, self.heads, self.in_channels)
         assert x_l is not None
         assert x_r is not None
         assert x_lin_l is not None
         assert x_lin_r is not None
 
-        # add self-loops
         if self.add_self_loops:
             if isinstance(edge_index, Tensor):
                 num_nodes = x_l.size(0)
@@ -202,24 +269,26 @@ class GAINConv(MessagePassing):
                         "simultaneously is currently not yet supported for "
                         "'edge_index' in a 'SparseTensor' form")
 
-        # propagate_type: (x: PairTensor, edge_attr: OptTensor) [shape: num_nodes, att_heads, in_channels]
-        out = self.propagate(edge_index, x=(x_l, x_r), x_lin=(x_lin_l, x_lin_r), edge_attr=edge_attr, size=None)
+        # edge_updater_type: (x: PairTensor, edge_attr: OptTensor)
+        # (num_edges, att_heads)
+        alpha = self.edge_updater(edge_index, x=(x_lin_l, x_lin_r),
+                                  edge_attr=edge_attr)
+
+        # propagate_type: (x: PairTensor, alpha: Tensor) 
+        # (num_nodes, att_heads, in_channels)
+        out = self.propagate(edge_index, x=(x_l, x_r), alpha=alpha)
         if self.concat:
-            # [shape: num_nodes, att_heads * in_channels]
+            # (num_nodes, att_heads * in_channels)
             out = out.view(-1, self.heads * self.in_channels)
         else:
-            # [shape: num_nodes, in_channels] 
+            # (num_nodes, in_channels) 
             out = out.mean(dim=1)
-        # [shape: num_nodes, att_heads * in_channels / in_channels] --> [shape: num_nodes, out_channels]
+        # (num_nodes, att_heads * in_channels / in_channels) --> 
+        # (num_nodes, out_channels)
         if self.nn_norm_type == 'graphnorm':
             out = self.nn(out, batch=batch)
         else:
             out = self.nn(out)
-
-        # update alpha to be returned if required
-        alpha = self._alpha
-        assert alpha is not None
-        self._alpha = None
 
         if isinstance(return_attention_weights, bool):
             if isinstance(edge_index, Tensor):
@@ -234,55 +303,44 @@ class GAINConv(MessagePassing):
         else:
             return out, None
 
-    def message(
-            self, 
-            x_j: Tensor, 
-            x_lin_j: Tensor,
-            x_lin_i: Tensor, 
-            edge_attr: OptTensor,
-            index: Tensor, 
-            ptr: OptTensor,
-            size_i: Optional[int]
-        ) -> Tensor:
-        # add source and target embeddings to 'emulate' concatentation given that linear layer is applied already
-        # [shape: num_edges, att_heads, in_channels]
-        x = x_lin_i + x_lin_j
-
-        # check if there are edge attributes
+    def edge_update(self, x_j: Tensor, x_i: Tensor, edge_attr: OptTensor,
+                    index: Tensor, ptr: OptTensor,
+                    dim_size: Optional[int]) -> Tensor:
+        # add source and target embeddings to 'emulate' concatentation 
+        # given that linear layer is applied already
+        # (num_edges, att_heads, in_channels)
+        x = x_i + x_j
+        
         if edge_attr is not None:
-            # check dimensions of edge dimensions
             if edge_attr.dim() == 1:
-                # resize if 1
                 edge_attr = edge_attr.view(-1, 1)
-            # ensure that there is linear layer for edges
             assert self.lin_edge is not None
-            # pass edge attributes to lin_edge
-            # [shape: num_edges, edge_dims] --> [shape: num_edges, att_heads * in_channels]
+            # (num_edges, edge_dims) --> (num_edges, att_heads * in_channels)
             edge_attr = self.lin_edge(edge_attr)
-            # [shape: num_edges, att_heads * in_channels] --> [num_edges, att_heads, in_channels]
+            # (num_edges, att_heads * in_channels) --> 
+            # (num_edges, att_heads, in_channels)
             edge_attr = edge_attr.view(-1, self.heads, self.in_channels)
             # 'emulate' concatentation to node embeddings
-            # [shape: num_edges, att_heads, in_channels]
+            # (num_edges, att_heads, in_channels)
             x = x + edge_attr
 
-        # pass node embeddings through leaky relu
         x = F.leaky_relu(x, self.negative_slope)
-        # multiply by node independent parameter layer. sum over in_channels.
-        # x [shape: num_edges, att_heads, in_channels], self.att [shape: 1, att_heads, in_channels] --> 
-        # alpha [shape: num_edges, att_heads]
+        # x (num_edges, att_heads, in_channels), 
+        # self.att (1, att_heads, in_channels) --> 
+        # alpha (num_edges, att_heads)
         alpha = (x * self.att).sum(dim=-1)
-        # calculate softmaxed attention weights
-        # [shape: num_edges, att_heads]
-        alpha = softmax(alpha, index, ptr, size_i)
-        # store attention weights
-        self._alpha = alpha
-        # apply dropout to attention weights
+        alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-       
-        # apply attention weights to source nodes and add original source feature vector
-        # [shape: num_edges, att_heads, in_channels] * [shape: num_edges, att_heads, 1] -->
-        # [shape: num_edges, att_heads, in_channels]
-        return torch.tile(x_j.unsqueeze(1), (1, self.heads, 1)) * (alpha.unsqueeze(-1) + 1)
+        return alpha
+
+    def message(self, x_j: Tensor, alpha: Tensor) -> Tensor:
+        # apply attention weights to source nodes 
+        # and add original source feature vector
+        # (num_edges, att_heads, in_channels] 
+        # * (num_edges, att_heads, 1) -->
+        # (num_edges, att_heads, in_channels)
+        return torch.tile(x_j.unsqueeze(1), (1, self.heads, 1)) \
+            * (alpha.unsqueeze(-1) + 1)
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '

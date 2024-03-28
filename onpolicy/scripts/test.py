@@ -6,9 +6,11 @@ import torch_geometric.nn as gnn
 from onpolicy.algorithms.utils.nn import (
     DNAGATv2Block,
     GAINBlock,
+    GATBlock,
     GATv2Block,
+    GCNBlock,
     GINBlock, 
-    GNNAllLayers,
+    GNNConcatAllLayers,
     GNNDNALayers, 
     MLPBlock, 
     NNLayers
@@ -96,7 +98,7 @@ print(f"mlp_model_output.size(): {mlp_model_output.size()}")
 print("----------------")
 print("DNA GATV2 MODEL:")
 print("----------------")
-dna_gatv2_model_norm_type = 'graphnorm' # 'none'
+dna_gatv2_model_norm_type = 'graphnorm' # 'none' 'graphnorm'
 dna_gatv2_model = GNNDNALayers(
 	input_channels=2, 
 	block=DNAGATv2Block, 
@@ -129,17 +131,74 @@ for i, tup in enumerate(dna_gatv2_model_extra_output_list):
 	print(f"layer {i} alpha.size() in dna_gatv2_model_extra_output_list: {tup[1].size()}")
 
 print("------------")
+print("GCN MODEL:")
+print("------------")
+
+gcn_model_norm_type = 'graphnorm' # 'none' 'graphnorm'
+gcn_model = GNNConcatAllLayers(
+	input_channels=2, 
+	block=GCNBlock,
+	output_channels=[5 for _ in range(2)], 
+	n_gnn_fc_layers=2,
+	norm_type=gcn_model_norm_type
+)
+
+if gcn_model_norm_type == 'graphnorm':
+	gcn_model_output = gcn_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_weight=None, batch=batch)
+else:
+	gcn_model_output = gcn_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_weight=None)
+print(f"gcn_model_output: {gcn_model_output}")
+print(f"gcn_model_output.size(): {gcn_model_output.size()}")
+
+print("------------")
+print("GAT MODEL:")
+print("------------")
+
+gat_model_norm_type = 'graphnorm' # 'none' 'graphnorm'
+gat_model = GNNConcatAllLayers(
+	input_channels=2, 
+	block=GATBlock,
+	output_channels=[5 for _ in range(2)], 
+	n_gnn_fc_layers=2,
+	heads=2,
+    concat=True,
+    gnn_cpa_model='none',
+	norm_type=gat_model_norm_type
+)
+
+if gat_model_norm_type == 'graphnorm':
+	gat_model_output = gat_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_attr=None, size=None, return_attention_weights=None, batch=batch)
+else:
+	gat_model_output = gat_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_attr=None, size=None, return_attention_weights=None)
+print(f"gat_model_output (return_attention_weights == None): {gat_model_output}")
+print(f"gat_model_output.size() (return_attention_weights == None): {gat_model_output.size()}")
+print("\n")
+
+if gat_model_norm_type == 'graphnorm':
+	gat_model_output, gat_model_extra_output_list = gat_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_attr=None, size=None, return_attention_weights=True, batch=batch)
+else:
+	gat_model_output, gat_model_extra_output_list = gat_model(x=batch_data.x, edge_index=batch_data.edge_index, edge_attr=None, size=None, return_attention_weights=True)
+print(f"gat_model_output (return_attention_weights == True): {gat_model_output}")
+print(f"gat_model_output.size() (return_attention_weights == True): {gat_model_output.size()}")
+print(f"gat_model_extra_output_list: {gat_model_extra_output_list}")
+for i, tup in enumerate(gat_model_extra_output_list):
+	print(f"layer {i} edge_index in gat_model_extra_output_list: {tup[0]}")
+	print(f"layer {i} edge_index.size() in gat_model_extra_output_list: {tup[0].size()}")
+	print(f"layer {i} alpha in gat_model_extra_output_list: {tup[1]}")
+	print(f"layer {i} alpha.size() in gat_model_extra_output_list: {tup[1].size()}")
+
+print("------------")
 print("GATV2 MODEL:")
 print("------------")
 
-gatv2_model_norm_type = 'graphnorm' # 'none'
-gatv2_model = GNNAllLayers(
+gatv2_model_norm_type = 'graphnorm' # 'none' 'graphnorm'
+gatv2_model = GNNConcatAllLayers(
 	input_channels=2, 
 	block=GATv2Block,
 	output_channels=[5 for _ in range(2)], 
 	n_gnn_fc_layers=2,
 	heads=2,
-    concat=False,
+    concat=True,
     gnn_cpa_model='none',
 	norm_type=gatv2_model_norm_type
 )
@@ -170,7 +229,7 @@ print("GIN MODEL:")
 print("----------")
 
 gin_model_norm_type = 'graphnorm' # 'none' 'layernorm' 'batchnorm1d' 'graphnorm'
-gin_model = GNNAllLayers(
+gin_model = GNNConcatAllLayers(
 	input_channels=2, 
 	block=GINBlock,
 	output_channels=[5 for _ in range(2)], 
@@ -191,7 +250,7 @@ print("GAIN MODEL:")
 print("-----------")
 
 gain_model_norm_type = 'graphnorm' # 'none' 'layernorm' 'batchnorm1d' 'graphnorm'
-gain_model = GNNAllLayers(
+gain_model = GNNConcatAllLayers(
 	input_channels=2, 
 	block=GAINBlock,
 	output_channels=[5 for _ in range(2)],
@@ -221,3 +280,40 @@ for i, tup in enumerate(gain_model_extra_output_list):
 	print(f"layer {i} edge_index.size() in gain_model_extra_output_list: {tup[0].size()}")
 	print(f"layer {i} alpha in gain_model_extra_output_list: {tup[1]}")
 	print(f"layer {i} alpha.size() in gain_model_extra_output_list: {tup[1].size()}")
+
+# mini_batch_size = 5
+# data_chunk_length = 10
+# num_agents = 3
+
+# masks = torch.randint(low=0, high=10, size=(mini_batch_size, data_chunk_length, num_agents, 1))
+# print(f"masks.shape: {masks.shape}")
+# has_zeros = (masks[:, 1:, 0].squeeze() == 0.0).any(dim=0).nonzero().squeeze()
+# print(f"has_zeros: {has_zeros}")
+# print(f"has_zeros.shape: {has_zeros.shape}")
+# # +1 to correct the masks[1:]
+# if has_zeros.dim() == 0:
+#     # Deal with scalar
+#     has_zeros = [has_zeros.item() + 1]
+# else:
+#     has_zeros = (has_zeros + 1).numpy().tolist()
+# for i in range(len(has_zeros)):
+# 	print(masks[:, has_zeros[i], 0])
+
+# # find steps in sequence (data_chunk_length) with any zero for mask for the agent across mini_batch_size
+# # t=0 is requires application of mask by default
+# # (masks[:, 1:, i].squeeze() == 0.0).any(dim=0).nonzero().squeeze().cpu() 
+# # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)] --> 
+# # [shape: (mini_batch_size, data_chunk_length - 1)] --> [shape: (data_chunk_length - 1,)] -->
+# # [shape: (data_chunk_length - 1, 1)] --> [shape: (data_chunk_length - 1, )]
+# has_zeros = (masks[:, 1:, i].squeeze() == 0.0).any(dim=0).nonzero().squeeze().cpu()
+# # account for indexing when t=0 is not included
+# if has_zeros.dim() == 0:
+#     # scalar
+#     has_zeros = [has_zeros.item() + 1]
+# else:
+#     has_zeros = (has_zeros + 1).numpy().tolist()
+# # add t=0 and t=data_chunk_length to the list
+# has_zeros = [0] + has_zeros + [T]
+# for i in range(len(has_zeros) - 1):
+#     start_idx = has_zeros[i]
+#     end_idx = has_zeros[i + 1]

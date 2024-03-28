@@ -5,11 +5,11 @@ from onpolicy.utils.util import get_gard_norm, huber_loss, mse_loss
 from onpolicy.utils.valuenorm import ValueNorm
 from onpolicy.algorithms.utils.util import check
 
-class MuDMAF_MAPPO():
+class CommNet_MAPPO():
     """
-    Trainer class for MAPPO to update policies.
+    Trainer class for CommNet MAPPO to update policies.
     :param args: (argparse.Namespace) arguments containing relevant model, policy, and env information.
-    :param policy: (MuDMAF_MAPPOPolicy) policy to update.
+    :param policy: (CommNet_MAPPO_Policy) policy to update.
     :param device: (torch.device) specifies the device to run on (cpu/gpu).
     """
     def __init__(self,
@@ -192,12 +192,7 @@ class MuDMAF_MAPPO():
         train_info['ratio'] = 0
 
         for _ in range(self.ppo_epoch):
-            if self._use_recurrent_policy:
-                data_generator = buffer.recurrent_generator(advantages, self.num_mini_batch, self.data_chunk_length)
-            elif self._use_naive_recurrent:
-                data_generator = buffer.naive_recurrent_generator(advantages, self.num_mini_batch)
-            else:
-                data_generator = buffer.feed_forward_generator(advantages, self.num_mini_batch)
+            data_generator = buffer.recurrent_generator(advantages, self.num_mini_batch, self.data_chunk_length)
 
             for sample in data_generator:
 

@@ -4,8 +4,10 @@ import torch_geometric.nn as gnn
 
 from onpolicy.algorithms.utils.dna_gatv2_conv import DNAGATv2Conv
 from onpolicy.algorithms.utils.gain_conv import GAINConv
+from onpolicy.algorithms.utils.gat_conv import GATConv
 from onpolicy.algorithms.utils.gatv2_conv import GATv2Conv
 from onpolicy.algorithms.utils.gin_gine_conv import GINConv
+from torch_geometric.nn import GCNConv
 
 def activation_function(activation):
     """
@@ -487,6 +489,216 @@ class DNAGATv2Block(nn.Module):
         x, extra = self.block(x, edge_index, *args, **kwargs)
         return x, extra
 
+class GCNBlock(nn.Module):
+    """ 
+    class to build GCNBlock 
+    """
+    block_type = 'GCNBlock'
+
+    def __init__(
+            self, 
+            input_channels,
+            output_channels,
+            improved=False,
+            cached=False,
+            add_self_loops=True,
+            normalize=True,
+            bias=True,
+            norm_type='none',
+            activation_func='relu',
+            *args,
+            **kwargs,
+        ):
+        """ 
+        class constructor for attributes of the GCNBlock 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+
+        # input and output channels for GCNBlock 
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # boolean for different adjacency matrix calculation
+        self.improved = improved
+        # boolean for cached computation
+        self.cached = cached
+        # boolean to add self loops
+        self.add_self_loops = add_self_loops
+        # whether to add self-loops and compute symmetric normalization coefficients on-the-fly
+        self.normalize = normalize
+        # boolean for bias
+        self.bias = bias
+        # normalisation
+        self.norm_type = norm_type
+        if self.norm_type == 'graphnorm':
+            self.norm = gnn.GraphNorm(
+                in_channels=self.output_channels,
+                eps=kwargs.get('graphnorm_eps', 1e-5)
+            )
+        elif self.norm_type == 'none':
+            self.norm = None
+        else:
+            raise Exception(f"{self.norm_type} not available for {self.block_type}")
+        # activation function
+        self.activation_func = activation_func
+
+        if self.norm is None:
+            # input --> GCNBlock --> activation function
+            self.block = gnn.Sequential(
+                'x, edge_index, edge_weight', [
+                    (GCNConv(
+                        in_channels=input_channels, 
+                        out_channels=output_channels, 
+                        improved=self.improved,
+                        cached=self.cached,
+                        add_self_loops=self.add_self_loops,
+                        normalize=self.normalize,
+                        bias=self.bias,
+                    ), 'x, edge_index, edge_weight -> x'),
+                    (activation_function(self.activation_func), 'x -> x'),
+                ]
+            )
+        else:
+            # input --> GCNBlock --> normalisation --> activation function
+            self.block = gnn.Sequential(
+                'x, edge_index, edge_weight, batch', [
+                    (GCNConv(
+                        in_channels=input_channels, 
+                        out_channels=output_channels, 
+                        improved=self.improved,
+                        cached=self.cached,
+                        add_self_loops=self.add_self_loops,
+                        normalize=self.normalize,
+                        bias=self.bias,
+                    ), 'x, edge_index, edge_weight -> x'), 
+                    (self.norm, 'x, batch -> x'),
+                    (activation_function(self.activation_func), 'x -> x'),
+                ]
+            )
+
+    def forward(self, x, edge_index, *args, **kwargs):
+        """ 
+        function for forward pass of GCNBlock 
+        """
+        x = self.block(x, edge_index, *args, **kwargs)
+        return x
+
+class GATBlock(nn.Module):
+    """ 
+    class to build GATBlock 
+    """
+    block_type = 'GATBlock'
+
+    def __init__(
+            self, 
+            input_channels,
+            output_channels,
+            heads=1,
+            concat=True,
+            negative_slope=0.2,
+            dropout=0.0,
+            add_self_loops=True,
+            edge_dim=None,
+            fill_value='mean',
+            bias=True,
+            gnn_cpa_model='none',
+            norm_type='none',
+            activation_func='relu',
+            *args,
+            **kwargs,
+        ):
+        """ 
+        class constructor for attributes of the GATBlock 
+        """
+        # inherit class constructor attributes from nn.Module
+        super().__init__()
+
+        # input and output channels for GATv2Conv 
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+        # number of heads for gat
+        self.heads = heads
+        # boolean that when set to false, the multi-head attentions are averaged instead of concatenated
+        self.concat = concat
+        # negative slope of leaky relu
+        self.negative_slope = negative_slope
+        # dropout probablity
+        self.dropout = dropout
+        # boolean to add self loops
+        self.add_self_loops = add_self_loops
+        # dimensions of edge attributes if any
+        self.edge_dim = edge_dim
+        # fill value for edge attributes for self loops
+        self.fill_value = fill_value
+        # boolean for bias
+        self.bias = bias
+        # cardinality preserved attention (cpa) model
+        self.gnn_cpa_model = gnn_cpa_model
+        # normalisation
+        self.norm_type = norm_type
+        if self.norm_type == 'graphnorm':
+            self.norm = gnn.GraphNorm(
+                in_channels=self.output_channels * self.heads if self.concat else self.output_channels,
+                eps=kwargs.get('graphnorm_eps', 1e-5)
+            )
+        elif self.norm_type == 'none':
+            self.norm = None
+        else:
+            raise Exception(f"{self.norm_type} not available for {self.block_type}")
+        # activation function
+        self.activation_func = activation_func
+
+        if self.norm is None:
+            # input --> GATConv --> activation function
+            self.block = gnn.Sequential(
+                'x, edge_index, edge_attr, size, return_attention_weights', [
+                    (GATConv(
+                        in_channels=input_channels, 
+                        out_channels=output_channels, 
+                        heads=heads, 
+                        concat=concat, 
+                        negative_slope=negative_slope, 
+                        dropout=dropout, 
+                        add_self_loops=add_self_loops, 
+                        edge_dim=edge_dim, 
+                        fill_value=fill_value, 
+                        bias=bias,
+                        gnn_cpa_model=gnn_cpa_model
+                    ), 'x, edge_index, edge_attr, size, return_attention_weights -> x, extra'),
+                    (activation_function(self.activation_func), 'x -> x'),
+                    (lambda x_1, x_2: (x_1, x_2), 'x, extra -> x')
+                ]
+            )
+        else:
+            # input --> GATConv --> normalisation --> activation function
+            self.block = gnn.Sequential(
+                'x, edge_index, edge_attr, size, return_attention_weights, batch', [
+                    (GATConv(
+                        in_channels=input_channels, 
+                        out_channels=output_channels, 
+                        heads=heads, 
+                        concat=concat, 
+                        negative_slope=negative_slope, 
+                        dropout=dropout, 
+                        add_self_loops=add_self_loops, 
+                        edge_dim=edge_dim, 
+                        fill_value=fill_value, 
+                        bias=bias, 
+                        gnn_cpa_model=gnn_cpa_model
+                    ), 'x, edge_index, edge_attr, size, return_attention_weights -> x, extra'), 
+                    (self.norm, 'x, batch -> x'),
+                    (activation_function(self.activation_func), 'x -> x'),
+                    (lambda x_1, x_2: (x_1, x_2), 'x, extra -> x')
+                ]
+            )
+
+    def forward(self, x, edge_index, *args, **kwargs):
+        """ 
+        function for forward pass of GATBlock 
+        """
+        x, extra = self.block(x, edge_index, *args, **kwargs)
+        return x, extra
+
 class GATv2Block(nn.Module):
     """ 
     class to build GATv2Block 
@@ -603,7 +815,7 @@ class GATv2Block(nn.Module):
 
     def forward(self, x, edge_index, *args, **kwargs):
         """ 
-        function for forward pass of DNAGATv2Block 
+        function for forward pass of GATv2Block 
         """
         x, extra = self.block(x, edge_index, *args, **kwargs)
         return x, extra
@@ -889,9 +1101,9 @@ class GNNDNALayers(NNLayers):
         else:
             return x 
 
-class GNNAllLayers(NNLayers):
+class GNNConcatAllLayers(NNLayers):
     """ 
-    class to build layers of GNN blocks to include all layers
+    class to build layers of GNN blocks that concatenates features from all layers as graph-level readout
     """
     def __init__(self, input_channels, block, output_channels, *args, **kwargs):
         """ 
@@ -902,8 +1114,8 @@ class GNNAllLayers(NNLayers):
         # inherit class constructor attributes from nn_layers
         super().__init__(input_channels, block, output_channels, *args, **kwargs)
 
-        # update GATv2Block accounting for concatenation or averaging of attention heads
-        if self.block.block_type == 'GATv2Block':
+        # update GATBlock or GATv2Block accounting for concatenation or averaging of attention heads
+        if self.block.block_type == 'GATBlock' or self.block.block_type == 'GATv2Block':
             # obtain relevant attributes for that determines output size
             self.heads = kwargs.get('heads', 1)
             self.concat = kwargs.get('concat', False)
@@ -926,7 +1138,8 @@ class GNNAllLayers(NNLayers):
         # default no extra outputs
         extra_output = False
         # check for extra outputs
-        if self.block.block_type == 'GATv2Block' or self.block.block_type == 'GAINBlock':
+        if self.block.block_type == 'GATBlock' or self.block.block_type == 'GATv2Block' \
+            or self.block.block_type == 'GAINBlock':
             extra_output = kwargs.get('return_attention_weights', False)
 
         # create copy of input
@@ -934,7 +1147,7 @@ class GNNAllLayers(NNLayers):
         # iterate over each block
         for block in self.blocks:
             # output y, [shape: (num_nodes, output_channels)]
-            if self.block.block_type == 'GINBlock':
+            if self.block.block_type == 'GCNBlock' or self.block.block_type == 'GINBlock':
                 x = block(x, *args, **kwargs)
             else:
                 x, extra = block(x, *args, **kwargs)

@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo"]`
+            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -162,6 +162,10 @@ def get_config():
     CommNet parameters:
         --commnet_k
             Number of communication rounds in CommNet, (default: 3)
+    
+    G2ANet parameters:
+        --g2anet_gumbel_softmax_tau
+            Tau value for gumbel softmax for G2ANet, (default: 1)
 
     Optimizer parameters:
         --lr <float>
@@ -240,7 +244,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -337,6 +341,9 @@ def get_config():
 
     # commnet network parameters (use hidden_size in network parameters)
     parser.add_argument("--commnet_k", type=int, default=3, help="Number of communication rounds in CommNet")
+
+    # g2anet network parameters (use hidden_size in network parameters)
+    parser.add_argument("--g2anet_gumbel_softmax_tau", type=float, default=1, help="Tau value for gumbel softmax for G2ANet")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

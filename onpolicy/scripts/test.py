@@ -284,12 +284,13 @@ for i, tup in enumerate(gain_model_extra_output_list):
 # mini_batch_size = 5
 # data_chunk_length = 10
 # num_agents = 3
+# hidden_size = 4
 
 # masks = torch.randint(low=0, high=10, size=(mini_batch_size, data_chunk_length, num_agents, 1))
 # print(f"masks.shape: {masks.shape}")
 # has_zeros = (masks[:, 1:, 0].squeeze() == 0.0).any(dim=0).nonzero().squeeze()
 # print(f"has_zeros: {has_zeros}")
-# print(f"has_zeros.shape: {has_zeros.shape}")
+# print(f"has_zeros.shape: {has_zeros.shape}")	
 # # +1 to correct the masks[1:]
 # if has_zeros.dim() == 0:
 #     # Deal with scalar
@@ -317,3 +318,54 @@ for i, tup in enumerate(gain_model_extra_output_list):
 # for i in range(len(has_zeros) - 1):
 #     start_idx = has_zeros[i]
 #     end_idx = has_zeros[i + 1]
+
+# h = torch.arange(mini_batch_size * num_agents * hidden_size).reshape(mini_batch_size * num_agents, 1, hidden_size)
+# print(f"h: {h}")
+# print(f"h.shape: {h.shape}")
+# h_hard_1 = h.reshape(mini_batch_size, num_agents, 1, hidden_size).repeat(1, 1, num_agents, 1)
+# print(f"h_hard_1: {h_hard_1}")
+# print(f"h_hard_1.shape: {h_hard_1.shape}")
+# h_hard_2 = h.reshape(mini_batch_size, 1, num_agents, hidden_size).repeat(1, num_agents, 1,  1)
+# print(f"h_hard_2: {h_hard_2}")
+# print(f"h_hard_2.shape: {h_hard_2.shape}")
+# h_hard = torch.cat((h_hard_1, h_hard_2), dim=-1) 
+# print(f"h_hard: {h_hard}")
+# print(f"h_hard.shape: {h_hard.shape}")
+# # mask = (1 - torch.eye(num_agents)).unsqueeze(0).repeat(mini_batch_size, 1, 1).unsqueeze(-1)
+# mask = (1 - torch.eye(num_agents)).unsqueeze(0).unsqueeze(-1).repeat(mini_batch_size, 1, 1, hidden_size * 2)
+# print(f"mask: {mask}")
+# print(f"mask.shape: {mask.shape}")
+# h_hard_masked = h_hard[mask == 1]
+# h_hard_masked = h_hard_masked.reshape(mini_batch_size * num_agents, num_agents - 1, hidden_size * 2)
+# print(f"h_hard_masked: {h_hard_masked}")
+# print(f"h_hard_masked.shape: {h_hard_masked.shape}")
+
+# q = torch.arange(mini_batch_size * num_agents * hidden_size).reshape(mini_batch_size * num_agents, 1, hidden_size)
+# k = torch.arange(mini_batch_size * num_agents * hidden_size).reshape(mini_batch_size * num_agents, 1, hidden_size)
+
+# # q = q.reshape(mini_batch_size, num_agents, 1, hidden_size).repeat(1, 1, num_agents, 1)
+# q = q.reshape(mini_batch_size, num_agents, 1, hidden_size)
+# k = k.reshape(mini_batch_size, 1, num_agents, hidden_size).repeat(1, num_agents, 1,  1)
+# print(f"q: {q}")
+# print(f"q.shape: {q.shape}")
+# print(f"k: {k}")
+# print(f"k.shape: {k.shape}")
+# mask = (1 - torch.eye(num_agents)).unsqueeze(0).unsqueeze(-1).repeat(mini_batch_size, 1, 1, hidden_size)
+# print(f"mask: {mask}")
+# print(f"mask.shape: {mask.shape}")
+# k_masked = k[mask == 1]
+# k_masked = k_masked.reshape(mini_batch_size, num_agents, num_agents - 1, hidden_size)
+# print(f"k_masked: {k_masked}")
+# print(f"k_masked.shape: {k_masked.shape}")
+# k_perm = k_masked.transpose(2, 3)
+# print(f"k_perm: {k_perm}")
+# print(f"k_perm.shape: {k_perm.shape}")
+# score = torch.matmul(q, k_perm)
+# print(f"score: {score}")
+# print(f"score.shape: {score.shape}")
+# scaled_score = score / np.sqrt(hidden_size)
+# print(f"scaled_score: {scaled_score}")
+# print(f"scaled_score.shape: {scaled_score.shape}")
+# soft_weight = nn.functional.softmax(scaled_score, dim=-1)
+# print(f"soft_weight: {soft_weight}")
+# print(f"soft_weight.shape: {soft_weight.shape}")

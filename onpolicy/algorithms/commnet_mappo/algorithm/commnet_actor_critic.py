@@ -54,12 +54,14 @@ class CommNet_Actor(nn.Module):
             input_size=self.hidden_size, 
             hidden_size=self.hidden_size, 
             num_layers=self._recurrent_N, 
-            batch_first=True)
+            batch_first=True
+        )
         self.comms_rnn = nn.GRU(
             input_size=self.hidden_size, 
             hidden_size=self.hidden_size, 
             num_layers=self._recurrent_N, 
-            batch_first=True)
+            batch_first=True
+        )
         self.act = ACTLayer(action_space, self.hidden_size, self._use_orthogonal, self._gain)
 
         self.to(device)
@@ -287,12 +289,14 @@ class CommNet_Critic(nn.Module):
             input_size=self.hidden_size, 
             hidden_size=self.hidden_size, 
             num_layers=self._recurrent_N, 
-            batch_first=True)
+            batch_first=True
+        )
         self.comms_rnn = nn.GRU(
             input_size=self.hidden_size, 
             hidden_size=self.hidden_size, 
             num_layers=self._recurrent_N, 
-            batch_first=True)
+            batch_first=True
+        )
 
         def init_(m):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0))

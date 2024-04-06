@@ -1,7 +1,7 @@
 #!/bin/sh
 env="StarCraft2"
-map="3s_vs_5z"
-algo="commnet_mappo"
+map="3s_vs_3z"
+algo="g2anet_mappo"
 seed_max=1
 user='cyuquan8'
 n_training_threads=1
@@ -13,14 +13,14 @@ num_mini_batch=1
 lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
-clip_param=0.05
+clip_param=0.2
 eval_episodes=32
 
-commnet_k=3
+g2anet_gumbel_softmax_tau=0.01
 hidden_size=128
 recurrent_N=1
 
-exp="commnet_k_${commnet_k}_\
+exp="g2anet_gumbel_softmax_tau_${g2anet_gumbel_softmax_tau}_\
 hidden_size_${hidden_size}_\
 recurrent_N_${recurrent_N}_\
 ep_len_${episode_length}_\
@@ -42,7 +42,7 @@ do
     --data_chunk_length ${data_chunk_length} --num_mini_batch ${num_mini_batch} --lr ${lr} --critic_lr ${critic_lr}\
     --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_episodes ${eval_episodes} --use_value_active_masks\
     --use_eval\
-    --commnet_k ${commnet_k}\
+    --g2anet_gumbel_softmax_tau ${g2anet_gumbel_softmax_tau}\
     --hidden_size ${hidden_size}\
     --recurrent_N ${recurrent_N}\ 
 done

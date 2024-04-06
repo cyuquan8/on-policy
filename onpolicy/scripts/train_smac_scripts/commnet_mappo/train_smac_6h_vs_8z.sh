@@ -1,6 +1,6 @@
 #!/bin/sh
 env="StarCraft2"
-map="1c3s5z"
+map="6h_vs_8z"
 algo="commnet_mappo"
 seed_max=1
 user='cyuquan8'

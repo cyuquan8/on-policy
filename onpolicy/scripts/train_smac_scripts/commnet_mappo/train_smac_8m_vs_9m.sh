@@ -1,6 +1,6 @@
 #!/bin/sh
 env="StarCraft2"
-map="bane_vs_bane"
+map="8m_vs_9m"
 algo="commnet_mappo"
 seed_max=1
 user='cyuquan8'

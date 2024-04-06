@@ -92,6 +92,9 @@ def main(args):
     elif all_args.algorithm_name == "commnet_mappo":
         print(f"u are choosing to use {all_args.algorithm_name}, we set use_centralized_V to be True")
         all_args.use_centralized_V = True
+    elif all_args.algorithm_name == "g2anet_mappo":
+        print(f"u are choosing to use {all_args.algorithm_name}, we set use_centralized_V to be True")
+        all_args.use_centralized_V = True
     else:
         raise NotImplementedError
 
@@ -182,6 +185,8 @@ def main(args):
         from onpolicy.runner.shared.gcmnet_smac_runner import GCMNetSMACRunner as Runner
     elif all_args.algorithm_name == "commnet_mappo":
         from onpolicy.runner.shared.smac_runner import SMACRunner as Runner
+    elif all_args.algorithm_name == "g2anet_mappo":
+        from onpolicy.runner.shared.g2anet_smac_runner import G2ANetSMACRunner as Runner
     elif all_args.share_policy:
         from onpolicy.runner.shared.smac_runner import SMACRunner as Runner
     else:

@@ -2,7 +2,7 @@
 env="StarCraft2"
 map="3m"
 algo="g2anet_mappo"
-seed_max=1
+seed_max=5
 user='cyuquan8'
 n_training_threads=1
 n_rollout_threads=8
@@ -14,6 +14,7 @@ lr=0.0005
 critic_lr=0.0005
 ppo_epoch=15
 clip_param=0.2
+eval_interval=10
 eval_episodes=32
 
 g2anet_gumbel_softmax_tau=0.01
@@ -26,8 +27,6 @@ recurrent_N_${recurrent_N}_\
 ep_len_${episode_length}_\
 data_chunk_len_${data_chunk_length}_\
 num_mini_batch_${num_mini_batch}_\
-lr_${lr}_\
-c_lr_${critic_lr}_\
 ppo_epoch_${ppo_epoch}_\
 clip_param_${clip_param}\
 "
@@ -40,8 +39,8 @@ do
     --map_name ${map} --seed ${seed} --user_name ${user} --n_training_threads ${n_training_threads}\
     --n_rollout_threads ${n_rollout_threads} --num_env_steps ${num_env_steps} --episode_length ${episode_length}\
     --data_chunk_length ${data_chunk_length} --num_mini_batch ${num_mini_batch} --lr ${lr} --critic_lr ${critic_lr}\
-    --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_episodes ${eval_episodes} --use_value_active_masks\
-    --use_eval\
+    --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_interval ${eval_interval}\
+    --eval_episodes ${eval_episodes} --use_value_active_masks --use_eval\
     --g2anet_gumbel_softmax_tau ${g2anet_gumbel_softmax_tau}\
     --hidden_size ${hidden_size}\
     --recurrent_N ${recurrent_N}\ 

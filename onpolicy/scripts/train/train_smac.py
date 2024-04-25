@@ -86,6 +86,22 @@ def main(args):
     elif all_args.algorithm_name == "ippo":
         print("u are choosing to use ippo, we set use_centralized_V to be False")
         all_args.use_centralized_V = False
+    elif all_args.algorithm_name == "gcnet_mappo":
+        print(f"u are choosing to use {all_args.algorithm_name} with gnn architecture {all_args.gcmnet_gnn_architecture}, we set use_centralized_V to be True")
+        print(f"{all_args.algorithm_name} does not use somu and scmu. setting all relevant somu and scmu parameters to False.")
+        all_args.use_centralized_V = True
+        all_args.gcmnet_somu_actor = False
+        all_args.gcmnet_scmu_actor = False
+        all_args.gcmnet_somu_critic = False
+        all_args.gcmnet_scmu_critic = False
+        all_args.gcmnet_somu_lstm_actor = False
+        all_args.gcmnet_scmu_lstm_actor = False
+        all_args.gcmnet_somu_lstm_critic = False
+        all_args.gcmnet_scmu_lstm_critic = False
+        all_args.gcmnet_somu_att_actor = False
+        all_args.gcmnet_scmu_att_actor = False
+        all_args.gcmnet_somu_att_critic = False
+        all_args.gcmnet_scmu_att_critic = False
     elif all_args.algorithm_name == "gcmnet_mappo":
         print(f"u are choosing to use {all_args.algorithm_name} with gnn architecture {all_args.gcmnet_gnn_architecture}, we set use_centralized_V to be True")
         all_args.use_centralized_V = True

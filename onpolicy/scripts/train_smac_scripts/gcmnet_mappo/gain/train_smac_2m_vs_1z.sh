@@ -13,7 +13,7 @@ num_mini_batch=2
 lr=0.0005
 critic_lr=0.0005
 ppo_epoch=5
-clip_param=0.2
+clip_param=0.05
 eval_interval=20
 eval_episodes=32
 

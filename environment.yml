@@ -120,7 +120,7 @@ dependencies:
       - tzdata==2023.3
       - urllib3==1.26.13
       - virtualenv==20.21.0
-      - wandb==0.17.0
+      - wandb==0.16.6
       - websocket-client==1.5.2
 prefix: /home/cyuquan8/miniconda3/envs/on_policy
 # pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118

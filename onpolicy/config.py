@@ -166,6 +166,46 @@ def get_config():
     G2ANet parameters:
         --g2anet_gumbel_softmax_tau
             Tau value for gumbel softmax for G2ANet, (default: 1)
+    
+    MAGIC parameters:
+        --magic_message_encoder
+            Whether use the message encoder for MAGIC, (default: False)
+        --magic_message_decoder 
+            Whether use the message decoder for MAGIC, (default: False)
+        --magic_use_gat_encoder 
+            Whether use the gat encoder before learning the first graph for MAGIC, (default: False)
+        --magic_gat_encoder_out_size 
+            Hidden size of output of the gat encoder for MAGIC, (default: 64)
+        --magic_gat_encoder_num_heads
+            Number of heads in the gat encoder for MAGIC (default: 4)
+        --magic_gat_encoder_normalize 
+            Whether to normilize the coefficients in the gat encoder for MAGIC (they have been normalized if the input graph is complete) (default: False)
+        --magic_first_graph_complete
+            Whether the first communication graph is set to a complete graph for MAGIC. (default: False)
+        --magic_second_graph_complete 
+            Whether the second communication graph is set to a complete graph for MAGIC (default: False)
+        --magic_learn_second_graph 
+            Whether to learn a new communication graph at the second round of communication for MAGIC (default: False)
+        --magic_gat_hidden_size 
+            Hidden size of one head in gat for MAGIC (default: 64)
+        --magic_gat_num_heads 
+            Number of heads in gat layers except the last one for MAGIC (default: 1)
+        --magic_gat_num_heads_out 
+            Number of heads in output gat layer for MAGIC (default: 1)
+        --magic_self_loop_type1 
+            Self loop type in the first gat layer for MAGIC (0: no self loop, 1: with self loop, 2: decided by hard attn mechanism) (default: 2)
+        --magic_self_loop_type2 
+            Self loop type in the second gat layer for MAGIC (0: no self loop, 1: with self loop, 2: decided by hard attn mechanism) (default: 2)
+        --magic_first_gat_normalize 
+            Whether normalize the coefficients in the first gat layer of the message processor for MAGIC (default: False)
+        --magic_second_gat_normalize 
+            Whether normilize the coefficients in the second gat layer of the message proccessor for MAGIC (default: False)
+        --magic_comm_init 
+            How to initialise comm weights [uniform|zeros] for MAGIC (default: 'uniform')
+        --magic_comm_mask_zero
+            Whether block the communication for MAGIC, (default: False)
+        --magic_directed 
+            Whether the communication graph is directed for MAGIC, (default: False)
 
     Optimizer parameters:
         --lr <float>
@@ -244,7 +284,7 @@ def get_config():
 
     # prepare parameters
     parser.add_argument("--algorithm_name", type=str,
-                        default='mappo', choices=["rmappo", "mappo", "ippo", "gcnet_mappo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo"])
+                        default='mappo', choices=["rmappo", "mappo", "ippo", "gcnet_mappo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo", "magic_mappo"])
     parser.add_argument("--experiment_name", type=str, default="check", help="an identifier to distinguish different experiment.")
     parser.add_argument("--seed", type=int, default=1, help="Random seed for numpy/torch")
     parser.add_argument("--cuda", action='store_false', default=True, help="by default True, will use GPU to train; or else will use CPU;")
@@ -344,6 +384,27 @@ def get_config():
 
     # g2anet network parameters (use hidden_size in network parameters)
     parser.add_argument("--g2anet_gumbel_softmax_tau", type=float, default=1, help="Tau value for gumbel softmax for G2ANet")
+
+    # magic network parameters (use hidden_size in network parameters)
+    parser.add_argument('--magic_message_encoder', action='store_true', default=False, help='Whether use the message encoder for MAGIC')
+    parser.add_argument('--magic_message_decoder', action='store_true', default=False, help='Whether use the message decoder for MAGIC')
+    parser.add_argument('--magic_use_gat_encoder', action='store_true', default=False, help='Whether use the gat encoder before learning the first graph for MAGIC')
+    parser.add_argument('--magic_gat_encoder_out_size', default=64, type=int, help='Hidden size of output of the gat encoder for MAGIC')
+    parser.add_argument('--magic_gat_encoder_num_heads', default=4, type=int, help='Number of heads in the gat encoder for MAGIC')
+    parser.add_argument('--magic_gat_encoder_normalize', action='store_true', default=False, help='Whether to normilize the coefficients in the gat encoder for MAGIC (they have been normalized if the input graph is complete)')
+    parser.add_argument('--magic_first_graph_complete', action='store_true', default=False, help='Whether the first communication graph is set to a complete graph for MAGIC')
+    parser.add_argument('--magic_second_graph_complete', action='store_true', default=False, help='Whether the second communication graph is set to a complete graph for MAGIC')
+    parser.add_argument('--magic_learn_second_graph', action='store_true', default=False, help='Whether to learn a new communication graph at the second round of communication for MAGIC')
+    parser.add_argument('--magic_gat_hidden_size', default=64, type=int, help='Hidden size of one head in gat for MAGIC')
+    parser.add_argument('--magic_gat_num_heads', default=1, type=int, help='Number of heads in gat layers except the last one for MAGIC')
+    parser.add_argument('--magic_gat_num_heads_out', default=1, type=int, help='Number of heads in output gat layer for MAGIC')
+    parser.add_argument('--magic_self_loop_type1', default=2, type=int, help='Self loop type in the first gat layer for MAGIC (0: no self loop, 1: with self loop, 2: decided by hard attn mechanism)')
+    parser.add_argument('--magic_self_loop_type2', default=2, type=int, help='Self loop type in the second gat layer for MAGIC (0: no self loop, 1: with self loop, 2: decided by hard attn mechanism)')
+    parser.add_argument('--magic_first_gat_normalize', action='store_true', default=False, help='Whether normalize the coefficients in the first gat layer of the message processor for MAGIC')
+    parser.add_argument('--magic_second_gat_normalize', action='store_true', default=False, help='Whether normilize the coefficients in the second gat layer of the message proccessor for MAGIC')
+    parser.add_argument('--magic_comm_init', default='uniform', type=str, help='How to initialise comm weights [uniform|zeros] for MAGIC', choices=["uniform", "zeros"])
+    parser.add_argument('--magic_comm_mask_zero', action='store_true', default=False, help="Whether block the communication for MAGIC")
+    parser.add_argument('--magic_directed', action='store_true', default=False, help='Whether the communication graph is directed for MAGIC')
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

@@ -73,6 +73,10 @@ class GAINConv(MessagePassing):
             will be applied to the source and the target node of every edge,
             *i.e.* :math:`\mathbf{\Theta}_{s} = \mathbf{\Theta}_{t}`.
             (default: :obj:`False`)
+        eps (float, optional): (Initial) :math:`\epsilon`-value.
+            (default: :obj:`1.`)
+        train_eps (bool, optional): If set to :obj:`True`, :math:`\epsilon`
+            will be a trainable parameter. (default: :obj:`False`)
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.MessagePassing`.
 
@@ -106,6 +110,8 @@ class GAINConv(MessagePassing):
         fill_value: Union[float, Tensor, str] = 'mean',
         bias: bool = True,
         share_weights: bool = False,
+        eps: float = 1., 
+        train_eps: bool = False,
         **kwargs,
     ):
         super().__init__(node_dim=0, **kwargs)
@@ -122,6 +128,11 @@ class GAINConv(MessagePassing):
         self.edge_dim = edge_dim
         self.fill_value = fill_value
         self.share_weights = share_weights
+        self.initial_eps = eps
+        if train_eps:
+            self.eps = torch.nn.Parameter(torch.empty(1))
+        else:
+            self.register_buffer('eps', torch.empty(1))
 
         # linear layer for source and target nodes
         if isinstance(in_channels, int):
@@ -164,6 +175,7 @@ class GAINConv(MessagePassing):
         if self.lin_edge is not None:
             self.lin_edge.reset_parameters()
         glorot(self.att)
+        self.eps.data.fill_(self.initial_eps)
 
     @overload
     def forward(
@@ -340,7 +352,7 @@ class GAINConv(MessagePassing):
         # * (num_edges, att_heads, 1) -->
         # (num_edges, att_heads, in_channels)
         return torch.tile(x_j.unsqueeze(1), (1, self.heads, 1)) \
-            * (alpha.unsqueeze(-1) + 1)
+            * (alpha.unsqueeze(-1) + self.eps)
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '

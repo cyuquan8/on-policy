@@ -188,6 +188,7 @@ class GCMNetActor(nn.Module):
                 n_gnn_fc_layers=self.n_gnn_fc_layers,
                 heads=self.gnn_att_heads,
                 concat=self.gnn_att_concat,
+                train_eps=self.gnn_train_eps,
                 norm_type=self.gnn_norm
             )
             # calculate relevant input dimensions
@@ -1536,6 +1537,7 @@ class GCMNetCritic(nn.Module):
                 n_gnn_fc_layers=self.n_gnn_fc_layers,
                 heads=self.gnn_att_heads,
                 concat=self.gnn_att_concat,
+                train_eps=self.gnn_train_eps,
                 norm_type=self.gnn_norm
             )
             # calculate relevant input dimensions

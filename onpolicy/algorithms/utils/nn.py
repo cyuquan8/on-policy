@@ -112,7 +112,7 @@ class MLPBlock(nn.Module):
     """
     block_type = 'MLPBlock'
 
-    def __init__(
+    def __init__(   
             self, 
             input_channels, 
             output_channels, 
@@ -916,6 +916,8 @@ class GAINBlock(nn.Module):
             edge_dim=None,
             fill_value='mean',
             share_weights=False,
+            eps=1.0,
+            train_eps=False,
             norm_type='none',
             *args,
             **kwargs
@@ -947,6 +949,10 @@ class GAINBlock(nn.Module):
         self.fill_value = fill_value
         # whether to use same matrix for target and source nodes
         self.share_weights = share_weights
+        # epsilon
+        self.eps = eps
+        # boolean to track if eps is trainable parameter
+        self.train_eps = train_eps
         # normalisation
         self.norm_type = norm_type
 
@@ -978,7 +984,9 @@ class GAINBlock(nn.Module):
                         add_self_loops=add_self_loops, 
                         edge_dim=edge_dim, 
                         fill_value=fill_value,  
-                        share_weights=share_weights
+                        share_weights=share_weights,
+                        eps=eps, 
+                        train_eps=train_eps
                     ), 'x, edge_index, edge_attr, return_attention_weights, batch -> x, extra')
                 ]
             )
@@ -998,7 +1006,9 @@ class GAINBlock(nn.Module):
                         add_self_loops=add_self_loops, 
                         edge_dim=edge_dim, 
                         fill_value=fill_value,  
-                        share_weights=share_weights
+                        share_weights=share_weights,
+                        eps=eps, 
+                        train_eps=train_eps
                     ), 'x, edge_index, edge_attr, return_attention_weights -> x, extra')
                 ]
             )

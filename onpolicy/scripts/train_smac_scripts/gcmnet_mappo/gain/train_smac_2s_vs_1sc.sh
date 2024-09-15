@@ -67,6 +67,7 @@ do
     --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\
     --gcmnet_gnn_dna_gatv2_multi_att_heads ${gcmnet_gnn_dna_gatv2_multi_att_heads}\
     --gcmnet_gnn_att_concat\
+    --gcmnet_train_eps\
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\

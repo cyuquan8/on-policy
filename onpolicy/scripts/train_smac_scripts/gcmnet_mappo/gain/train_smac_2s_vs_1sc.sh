@@ -50,6 +50,7 @@ _somu_lstm_a\
 _scmu_lstm_a\
 _somu_lstm_c\
 _scmu_lstm_c\
+_gcmnet_gnn_train_eps\
 "
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
@@ -67,7 +68,7 @@ do
     --gcmnet_gnn_att_heads ${gcmnet_gnn_att_heads}\
     --gcmnet_gnn_dna_gatv2_multi_att_heads ${gcmnet_gnn_dna_gatv2_multi_att_heads}\
     --gcmnet_gnn_att_concat\
-    --gcmnet_train_eps\
+    --gcmnet_gnn_train_eps\
     --gcmnet_cpa_model ${gcmnet_cpa_model}\
     --gcmnet_n_gnn_layers ${gcmnet_n_gnn_layers}\
     --gcmnet_n_gnn_fc_layers ${gcmnet_n_gnn_fc_layers}\
@@ -95,7 +96,7 @@ do
     --gcmnet_dynamics_loss_coef ${gcmnet_dynamics_loss_coef}\
     --gcmnet_dynamics_reward_coef ${gcmnet_dynamics_reward_coef}\
     # --gcmnet_gnn_att_concat\
-    # --gcmnet_train_eps\
+    # --gcmnet_gnn_train_eps\
     # --gcmnet_somu_actor\
     # --gcmnet_scmu_actor\
     # --gcmnet_somu_critic\

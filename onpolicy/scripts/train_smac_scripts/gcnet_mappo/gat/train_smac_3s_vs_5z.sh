@@ -82,7 +82,7 @@ do
     --gcmnet_dynamics_loss_coef ${gcmnet_dynamics_loss_coef}\
     --gcmnet_dynamics_reward_coef ${gcmnet_dynamics_reward_coef}\
     # --gcmnet_gnn_att_concat\
-    # --gcmnet_train_eps\
+    # --gcmnet_gnn_train_eps\
     # --gcmnet_somu_actor\
     # --gcmnet_scmu_actor\
     # --gcmnet_somu_critic\

@@ -41,7 +41,8 @@ class GCMNetRunner(object):
         self.use_render = self.all_args.use_render
 
         # gcmnet somu and scmu parameters
-        assert 'gcmnet' in self.algorithm_name, f'algorithm name is {self.algorithm_name} and not gcmnet_mappo'
+        assert ('gcmnet' in self.algorithm_name or 'gcnet' in self.algorithm_name), \
+            f'algorithm name is {self.algorithm_name} and not gcmnet_mappo'
         self.somu_actor = self.all_args.gcmnet_somu_actor
         self.scmu_actor = self.all_args.gcmnet_scmu_actor
         self.somu_critic = self.all_args.gcmnet_somu_critic

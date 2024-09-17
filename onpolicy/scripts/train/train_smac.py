@@ -200,7 +200,7 @@ def main(args):
     }
 
     # run experiments
-    if all_args.algorithm_name == "gcmnet_mappo":
+    if all_args.algorithm_name == "gcmnet_mappo" or all_args.algorithm_name == "gcnet_mappo":
         from onpolicy.runner.shared.gcmnet_smac_runner import GCMNetSMACRunner as Runner
     elif all_args.algorithm_name == "commnet_mappo":
         from onpolicy.runner.shared.smac_runner import SMACRunner as Runner

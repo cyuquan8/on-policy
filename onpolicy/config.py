@@ -141,7 +141,7 @@ def get_config():
         --gcmnet_knn
             Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph (default: False)
         --gcmnet_k <int>
-            Number of Neighbours for K-Nearest Neighbour, (default: 1)
+            Number of Neighbours for K-Nearest Neighbour, (default: 3)
         --gcmnet_rni
             Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN, (default: False)
         --gcmnet_rni_ratio <float>
@@ -369,7 +369,7 @@ def get_config():
     parser.add_argument("--gcmnet_fc_output_dims", type=int, default=64, help="Hidden Size for MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_n_fc_layers", type=int, default=2, help="Number of MLP layers in GCMNet actor and critic network")
     parser.add_argument("--gcmnet_knn", action='store_true', default=False, help="Use K-Nearest Neighbour to generate edge index. If False, use fully connected graph")
-    parser.add_argument("--gcmnet_k", type=int, default=1, help="Number of Neighbours for K-Nearest Neighbour")
+    parser.add_argument("--gcmnet_k", type=int, default=3, help="Number of Neighbours for K-Nearest Neighbour")
     parser.add_argument("--gcmnet_rni", action='store_true', default=False, help="Use Random Node Initialisation (RNI), i.e. append randomly generated vectors to observations in GNN")
     parser.add_argument("--gcmnet_rni_ratio", type=float, default=0.25, help="Ratio of randomly generated vector in RNI to original observation feature vector")
     parser.add_argument("--gcmnet_dynamics", action='store_true', default=False, help="Whether to use dynamics models in GCMNet actor network")

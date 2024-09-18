@@ -395,7 +395,7 @@ class GCMNetActor(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=False).to(self.device) if self.knn else edge_index
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
             ) for i in range(batch_size)
         ]).to(self.device)
         # [shape: (batch_size, num_agents, 1)]
@@ -808,7 +808,7 @@ class GCMNetActor(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=False).to(self.device) if self.knn else edge_index
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
             ) for i in range(mini_batch_size)
         ]).to(self.device)
         # [shape: (mini_batch_size, num_agents, action_space_dim)]  
@@ -976,7 +976,7 @@ class GCMNetActor(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=False).to(self.device) \
+                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(self.device) \
                            if self.knn else edge_index
             ) for i in range(mini_batch_size * self.data_chunk_length)
         ]).to(self.device)
@@ -1728,7 +1728,7 @@ class GCMNetCritic(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=False).to(self.device) if self.knn else edge_index
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
             ) for i in range(batch_size)
         ]).to(self.device)
         # shape: (batch_size, num_agents, 1)
@@ -2095,7 +2095,7 @@ class GCMNetCritic(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=False).to(self.device) if self.knn else edge_index
+                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
             ) for i in range(mini_batch_size)
         ]).to(self.device)
 
@@ -2217,7 +2217,7 @@ class GCMNetCritic(nn.Module):
         obs_gnn = Batch.from_data_list([
             Data(
                 x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=False).to(self.device) \
+                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(self.device) \
                            if self.knn else edge_index
             ) for i in range(mini_batch_size * self.data_chunk_length)
         ]).to(self.device)

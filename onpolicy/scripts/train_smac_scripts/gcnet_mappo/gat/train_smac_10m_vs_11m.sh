@@ -33,7 +33,7 @@ gcmnet_scmu_lstm_hidden_size=128
 gcmnet_scmu_multi_att_n_heads=8
 gcmnet_fc_output_dims=128
 gcmnet_n_fc_layers=2
-gcmnet_k=1
+gcmnet_k=3
 gcmnet_rni_ratio=0.2
 gcmnet_dynamics_fc_output_dims=128
 gcmnet_dynamics_n_fc_layers=2
@@ -45,7 +45,8 @@ n_gnn_lyrs_${gcmnet_n_gnn_layers}_\
 ep_len_${episode_length}_\
 num_mini_batch_${num_mini_batch}_\
 ppo_epoch_${ppo_epoch}_\
-clip_param_${clip_param}\
+clip_param_${clip_param}_\
+gcmnet_k_${gcmnet_k}\
 "
 
 echo "env is ${env}, map is ${map}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
@@ -75,6 +76,7 @@ do
     --gcmnet_scmu_multi_att_n_heads ${gcmnet_scmu_multi_att_n_heads}\
     --gcmnet_fc_output_dims ${gcmnet_fc_output_dims}\
     --gcmnet_n_fc_layers ${gcmnet_n_fc_layers}\
+    --gcmnet_knn\
     --gcmnet_k ${gcmnet_k}\
     --gcmnet_rni_ratio ${gcmnet_rni_ratio}\
     --gcmnet_dynamics_fc_output_dims ${gcmnet_dynamics_fc_output_dims}\

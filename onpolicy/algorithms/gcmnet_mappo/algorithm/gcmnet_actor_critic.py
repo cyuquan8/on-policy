@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -101,6 +102,9 @@ class GCMNetActor(nn.Module):
         self.act_dims = get_shape_from_act_space(action_space)
 
         self.rni_dims = round(self.obs_dims * self.rni_ratio)
+
+        # complete graph edge index, [shape: (num_agents * num_agents, 2)] 
+        self.complete_edge_index = complete_graph_edge_index(self.num_agents)
 
         # model architecture for mappo GCMNetActor
 
@@ -378,12 +382,20 @@ class GCMNetActor(nn.Module):
         # [shape: (batch_size, num_agents, obs_dims)]
         obs = check(obs).to(**self.tpdv) 
         batch_size = obs.shape[0]
-        # obtain batch (needed for graphnorm if being used), [shape: (batch_size * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (batch_size * num_agents)]
+        batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(obs.view(batch_size * self.num_agents, -1), k=self.k, loop=True, batch=batch)
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(batch_size):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (batch_size * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, batch_size * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -392,12 +404,12 @@ class GCMNetActor(nn.Module):
             # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
             obs_rni = torch.cat((obs, rni), dim=-1)
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
-            ) for i in range(batch_size)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni.view(batch_size * self.num_agents, -1) if \
+                self.rni else obs.view(batch_size * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
         # [shape: (batch_size, num_agents, 1)]
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1)
         if available_actions is not None:
@@ -791,12 +803,20 @@ class GCMNetActor(nn.Module):
         # [shape: (mini_batch_size, num_agents, obs_dims)]
         obs = check(obs).to(**self.tpdv) 
         mini_batch_size = obs.shape[0]
-        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (mini_batch_size * num_agents)]
+        batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, mini_batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(obs.view(mini_batch_size * self.num_agents, -1), k=self.k, loop=True, batch=batch)
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(mini_batch_size):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (mini_batch_size * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, mini_batch_size * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -805,12 +825,12 @@ class GCMNetActor(nn.Module):
             # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
             obs_rni = torch.cat((obs, rni), dim=-1)
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
-            ) for i in range(mini_batch_size)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni.view(mini_batch_size * self.num_agents, -1) if \
+                self.rni else obs.view(mini_batch_size * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
         # [shape: (mini_batch_size, num_agents, action_space_dim)]  
         action = check(action).to(**self.tpdv)
         # [shape: (mini_batch_size * num_agents, action_space_dim)]
@@ -950,14 +970,27 @@ class GCMNetActor(nn.Module):
         mini_batch_size = obs.shape[0]
         # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
         obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * data_chunk_length * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(mini_batch_size * self.data_chunk_length)\
-                         .repeat_interleave(self.num_agents)\
-                         .to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        batch = torch.arange(mini_batch_size * self.data_chunk_length)\
+                     .repeat_interleave(self.num_agents)\
+                     .to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, mini_batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(
+                obs.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1), 
+                k=self.k, 
+                loop=True, 
+                batch=batch
+            )
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(mini_batch_size * self.data_chunk_length):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (mini_batch_size * data_chunk_length * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, mini_batch_size * data_chunk_length * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -973,13 +1006,12 @@ class GCMNetActor(nn.Module):
                 self.obs_dims + self.rni_dims
             )
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(self.device) \
-                           if self.knn else edge_index
-            ) for i in range(mini_batch_size * self.data_chunk_length)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni_batch.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1) if \
+                self.rni else obs_batch.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, action_space_dim)]  
         action = check(action).to(**self.tpdv)
         # [shape: (mini_batch_size * data_chunk_length, num_agents, action_space_dim)] 
@@ -1451,6 +1483,9 @@ class GCMNetCritic(nn.Module):
 
         self.rni_dims = round(self.obs_dims * self.rni_ratio)
 
+        # complete graph edge index, [shape: (num_agents * num_agents, 2)] 
+        self.complete_edge_index = complete_graph_edge_index(self.num_agents)
+
         # model architecture for mappo GCMNetCritic
 
         # gnn layers
@@ -1711,12 +1746,20 @@ class GCMNetCritic(nn.Module):
         # [shape: (batch_size, num_agents, obs_dims)]
         obs = check(cent_obs).to(**self.tpdv) 
         batch_size = obs.shape[0]
-        # obtain batch (needed for graphnorm if being used), [shape: (batch_size * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (batch_size * num_agents)]
+        batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(obs.view(batch_size * self.num_agents, -1), k=self.k, loop=True, batch=batch)
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(batch_size):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (batch_size * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, batch_size * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -1725,12 +1768,12 @@ class GCMNetCritic(nn.Module):
             # [shape: (batch_size, num_agents, obs_dims + rni_dims)]
             obs_rni = torch.cat((obs, rni), dim=-1)
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
-            ) for i in range(batch_size)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni.view(batch_size * self.num_agents, -1) if \
+                self.rni else obs.view(batch_size * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
         # shape: (batch_size, num_agents, 1)
         masks = check(masks).to(**self.tpdv).reshape(batch_size, self.num_agents, -1)
         if self.somu_critic:
@@ -2078,12 +2121,20 @@ class GCMNetCritic(nn.Module):
         # [shape: (mini_batch_size, num_agents, obs_dims)]
         obs = check(cent_obs).to(**self.tpdv) 
         mini_batch_size = obs.shape[0]
-        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (mini_batch_size * num_agents)]
+        batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, mini_batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(obs.view(mini_batch_size * self.num_agents, -1), k=self.k, loop=True, batch=batch)
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(mini_batch_size):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (mini_batch_size * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, mini_batch_size * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -2092,12 +2143,12 @@ class GCMNetCritic(nn.Module):
             # [shape: (mini_batch_size, num_agents, obs_dims + rni_dims)]
             obs_rni = torch.cat((obs, rni), dim=-1)
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni[i, :, :] if self.rni else obs[i, :, :], 
-                edge_index=knn_graph(x=obs[i, :, :], k=self.k, loop=True).to(self.device) if self.knn else edge_index
-            ) for i in range(mini_batch_size)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni.view(mini_batch_size * self.num_agents, -1) if \
+                self.rni else obs.view(mini_batch_size * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
 
         # obs_gnn.x [shape: (mini_batch_size * num_agents, obs_dims / (obs_dims + rni_dims))] 
         # --> gnn_layers [shape: (mini_batch_size * num_agents, scmu_input_dims==fc_input_dims)] 
@@ -2191,14 +2242,27 @@ class GCMNetCritic(nn.Module):
         mini_batch_size = obs.shape[0]
         # [shape: (mini_batch_size * data_chunk_length, num_agents, obs_dims)] 
         obs_batch = obs.reshape(mini_batch_size * self.data_chunk_length, self.num_agents, self.obs_dims)
-        # obtain batch (needed for graphnorm if being used), [shape: (mini_batch_size * data_chunk_length * num_agents)]
-        if self.gnn_norm == 'graphnorm':
-            batch = torch.arange(mini_batch_size * self.data_chunk_length)\
-                         .repeat_interleave(self.num_agents)\
-                         .to(self.device)
-        # complete graph edge index (including self-loops), [shape: (2, num_agents * num_agents)] 
-        if not self.knn:
-            edge_index = complete_graph_edge_index(self.num_agents) 
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        batch = torch.arange(mini_batch_size * self.data_chunk_length)\
+                     .repeat_interleave(self.num_agents)\
+                     .to(self.device)
+        # edge index based on knn for the entire batch at once, [shape: (2, mini_batch_size * num_agents * k)] 
+        if self.knn:
+            edge_index = knn_graph(
+                obs.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1), 
+                k=self.k, 
+                loop=True, 
+                batch=batch
+            )
+        # complete graph edge index (including self-loops)
+        else:
+            edge_index = []
+            # create a complete graph for each batch element
+            for i in range(mini_batch_size * self.data_chunk_length):
+                edge_index.append(self.complete_edge_index + i * self.num_agents)
+            # [shape: (mini_batch_size * data_chunk_length * num_agents * num_agents, 2)] 
+            edge_index = np.concatenate(edge_index, axis=0)
+            # [shape: (2, mini_batch_size * data_chunk_length * num_agents * num_agents)] 
             edge_index = torch.tensor(edge_index, dtype=torch.long, device=self.device).t().contiguous()
         # random node initialisation
         if self.rni:
@@ -2214,13 +2278,12 @@ class GCMNetCritic(nn.Module):
                 self.obs_dims + self.rni_dims
             )
         # gnn batched observations 
-        obs_gnn = Batch.from_data_list([
-            Data(
-                x=obs_rni_batch[i, :, :] if self.rni else obs_batch[i, :, :], 
-                edge_index=knn_graph(x=obs_batch[i, :, :], k=self.k, loop=True).to(self.device) \
-                           if self.knn else edge_index
-            ) for i in range(mini_batch_size * self.data_chunk_length)
-        ]).to(self.device)
+        obs_gnn = Data(
+            x=obs_rni_batch.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1) if \
+                self.rni else obs_batch.view(mini_batch_size * self.data_chunk_length * self.num_agents, -1),
+            edge_index=edge_index,
+            batch=batch
+        ).to(self.device)
         # [shape: (mini_batch_size, data_chunk_length, num_agents, 1)]  
         masks = check(masks).to(**self.tpdv)
         if self.somu_critic:

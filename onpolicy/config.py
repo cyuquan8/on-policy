@@ -9,7 +9,7 @@ def get_config():
 
     Prepare parameters:
         --algorithm_name <algorithm_name>
-            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcnet_mappo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo"]`
+            specifiy the algorithm, including `["rmappo", "mappo", "ippo", "gcnet_mappo", "gcmnet_mappo", "commnet_mappo", "g2anet_mappo", "magic_mappo"]`
         --experiment_name <str>
             an identifier to distinguish different experiment.
         --seed <int>
@@ -79,7 +79,7 @@ def get_config():
 
     GCMNet parameters:
         --gcmnet_gnn_architecture <str> 
-            Architecture for GNN layers in GCMNet, (default: "gain")
+            Architecture for GNN layers in GCMNet from ['dna_gatv2', 'gain', 'gat', 'gatv2', 'gcn', 'gin'], (default: "gain")
         --gcmnet_gnn_output_dims
             Hidden Size for GNN layers for actor and critic network, (default: 64)
         --gcmnet_gnn_att_heads <int>
@@ -89,7 +89,7 @@ def get_config():
         --gcmnet_gnn_att_concat
             Whether to concatenate or average results from multiple heads for GNN architecture with suitable with attention mechanism, (default: False)
         --gcmnet_cpa_model <str>
-            Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism, (default: 'none')
+            Cardinality Preserved Attention (CPA) model for GNN architecture with suitable attention mechanism from ['none', 'f_additive'], (default: 'none')
         --gcmnet_n_gnn_layers <int>
             Number of GNN layers for GCMNet actor and critic network, (default: 8)
         --gcmnet_n_gnn_fc_layers <int>
@@ -97,7 +97,7 @@ def get_config():
         --gcmnet_gnn_train_eps
             Whether to train epsilon in suitable GNN architecture (GINConv, GAINConv), (default: False)
         --gcmnet_gnn_norm
-            Normalisation for GNN, (default: 'none')
+            Normalisation for GNN from ['none', 'graphnorm'], (default: 'none')
         --gcmnet_somu_actor
             Whether to use Self Observation Memory Unit (SOMU) in GCMNet for actor network, (default: False)
         --gcmnet_scmu_actor

@@ -962,8 +962,6 @@ class GAINBlock(nn.Module):
             input_channels=input_channels * heads if concat else input_channels, 
             block=MLPBlock, 
             output_channels=[output_channels for _ in range(n_gnn_fc_layers)],
-            heads=heads,
-            concat=concat,
             norm_type=norm_type,
             *args,
             **kwargs

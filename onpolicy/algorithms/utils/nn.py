@@ -1,3 +1,4 @@
+import math
 import torch as T
 import torch.nn as nn
 import torch_geometric.nn as gnn
@@ -263,7 +264,7 @@ class ConvBlock(nn.Module):
         # pooling
         self.pooling_type = pooling_type
         if self.pooling_type == 'maxpool2d':
-            self.pooling = torch.nn.MaxPool2d(
+            self.pooling = nn.MaxPool2d(
                 kernel_size=kwargs.get('maxpool2d_kernel_size', 3), 
                 stride=kwargs.get('maxpool2d_stride', None), 
                 padding=kwargs.get('maxpool2d_padding', 0), 
@@ -272,7 +273,7 @@ class ConvBlock(nn.Module):
                 ceil_mode=kwargs.get('maxpool2d_ceil_mode', False) # set to True to account for odd dimensions
             )
         elif self.pooling_type == 'avgpool2d':
-            self.pooling = torch.nn.AvgPool2d(
+            self.pooling = nn.AvgPool2d(
                 kernel_size=kwargs.get('avgpool2d_kernel_size', 3), 
                 stride=kwargs.get('avgpool2d_stride', None), 
                 padding=kwargs.get('avgpool2d_padding', 0), 
@@ -287,12 +288,12 @@ class ConvBlock(nn.Module):
         # dropout
         self.dropout_type = dropout_type
         if self.dropout_type == 'dropout':
-            self.dropout = torch.nn.Dropout(
+            self.dropout = nn.Dropout(
                 p=kwargs.get('dropout_p', 0.5), 
                 inplace=kwargs.get('dropout_inplace', False)
             )
         elif self.dropout_type == 'dropout2d':
-            self.dropout = torch.nn.Dropout2d(
+            self.dropout = nn.Dropout2d(
                 p=kwargs.get('dropout2d_p', 0.5), 
                 inplace=kwargs.get('dropout2d_inplace', False)
             )

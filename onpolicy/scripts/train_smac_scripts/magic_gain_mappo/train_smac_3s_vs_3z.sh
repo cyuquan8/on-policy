@@ -25,9 +25,9 @@ magic_gat_num_heads_out=1
 magic_self_loop_type1=2
 magic_self_loop_type2=2
 magic_comm_init="uniform"
-magic_gat_architecture="gat"
+magic_gat_architecture="gain"
 magic_n_gnn_fc_layers=2
-magic_gnn_norm="none"
+magic_gnn_norm="graphnorm"
 hidden_size=128
 recurrent_N=1
 
@@ -72,10 +72,10 @@ do
     --magic_first_gat_normalize\
     --magic_second_gat_normalize\
     --magic_directed\
+    --magic_gnn_train_eps\
     # --magic_comm_mask_zero\
     # --magic_gat_encoder_normalize\
     # --magic_first_graph_complete\
     # --magic_second_graph_complete\
     # --magic_learn_second_graph\
-    # --magic_gnn_train_eps\
 done

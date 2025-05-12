@@ -25,10 +25,14 @@ magic_gat_num_heads_out=1
 magic_self_loop_type1=2
 magic_self_loop_type2=2
 magic_comm_init="uniform"
+magic_gat_architecture="gat"
+magic_n_gnn_fc_layers=2
+magic_gnn_norm="none"
 hidden_size=128
 recurrent_N=1
 
-exp="magic_self_loop_type1_${magic_self_loop_type1}_\
+exp="magic_gat_architecture_${magic_gat_architecture}_\
+magic_self_loop_type1_${magic_self_loop_type1}_\
 magic_self_loop_type2_${magic_self_loop_type2}_\
 hidden_size_${hidden_size}_\
 recurrent_N_${recurrent_N}_\
@@ -57,6 +61,9 @@ do
     --magic_self_loop_type1 ${magic_self_loop_type1}\
     --magic_self_loop_type2 ${magic_self_loop_type2}\
     --magic_comm_init ${magic_comm_init}\
+    --magic_gat_architecture ${magic_gat_architecture}\
+    --magic_n_gnn_fc_layers ${magic_n_gnn_fc_layers}\
+    --magic_gnn_norm ${magic_gnn_norm}\
     --hidden_size ${hidden_size}\
     --recurrent_N ${recurrent_N}\
     --magic_message_encoder\
@@ -69,5 +76,6 @@ do
     # --magic_gat_encoder_normalize\
     # --magic_first_graph_complete\
     # --magic_second_graph_complete\
-    # --magic_learn_second_graph\ 
+    # --magic_learn_second_graph\
+    # --magic_gnn_train_eps\
 done

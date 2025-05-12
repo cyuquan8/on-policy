@@ -1,17 +1,16 @@
-import math
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
     
-class GraphAttention(nn.Module):
+class GraphAttentionGAT(nn.Module):
     """
-    Graph-Attentional layer used in MAGIC that can process differentiable communication graphs
+    Graph-Attentional layer based on GAT used in MAGIC that can process 
+    differentiable communication graphs
     """
 
     def __init__(self, in_features, out_features, dropout, negative_slope, num_agents, num_heads=1, bias=True, 
         self_loop_type=2, average=False, normalize=False, device=torch.device("cpu")):
-        super(GraphAttention, self).__init__()
+        super(GraphAttentionGAT, self).__init__()
         """
         Initialization method for the graph-attentional layer
 

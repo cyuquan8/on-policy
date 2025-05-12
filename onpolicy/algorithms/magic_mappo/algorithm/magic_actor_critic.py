@@ -9,7 +9,8 @@ from onpolicy.algorithms.utils.nn import (
 from onpolicy.algorithms.utils.util import init, check
 from onpolicy.algorithms.utils.act import ACTLayer
 from onpolicy.algorithms.utils.popart import PopArt
-from onpolicy.algorithms.utils.magic_gat import GraphAttention
+from onpolicy.algorithms.utils.magic_gain import GraphAttentionGAIN
+from onpolicy.algorithms.utils.magic_gat import GraphAttentionGAT
 from onpolicy.utils.util import get_shape_from_obs_space, get_shape_from_act_space
 
 
@@ -45,6 +46,10 @@ class MAGIC_Actor(nn.Module):
         self.comm_init = args.magic_comm_init
         self.comm_mask_zero = args.magic_comm_mask_zero
         self.directed = args.magic_directed
+        self.gat_architecture = args.magic_gat_architecture
+        self.n_gnn_fc_layers = args.magic_n_gnn_fc_layers
+        self.gnn_train_eps = args.magic_gnn_train_eps
+        self.gnn_norm = args.magic_gnn_norm
 
         self._gain = args.gain
         self._use_orthogonal = args.use_orthogonal
@@ -71,18 +76,36 @@ class MAGIC_Actor(nn.Module):
             self.msg_encoder = nn.Linear(self.hidden_size, self.hidden_size)
         # gat encoder for scheduler
         if self.use_gat_encoder:
-            self.gat_encoder = GraphAttention(
-                in_features=self.hidden_size, 
-                out_features=self.gat_encoder_out_size, 
-                dropout=0, 
-                negative_slope=0.2,
-                num_agents=self.num_agents, 
-                num_heads=self.gat_encoder_num_heads, 
-                self_loop_type=1, 
-                average=True, 
-                normalize=self.gat_encoder_normalize,
-                device=device
-            )
+            if self.gat_architecture == 'gat':
+                self.gat_encoder = GraphAttentionGAT(
+                    in_features=self.hidden_size, 
+                    out_features=self.gat_encoder_out_size, 
+                    dropout=0, 
+                    negative_slope=0.2,
+                    num_agents=self.num_agents, 
+                    num_heads=self.gat_encoder_num_heads, 
+                    self_loop_type=1, 
+                    average=True, 
+                    normalize=self.gat_encoder_normalize,
+                    device=device
+                )
+            elif self.gat_architecture == 'gain':
+                self.gat_encoder = GraphAttentionGAIN(
+                    in_features=self.hidden_size,  
+                    out_features=self.gat_encoder_out_size, 
+                    dropout=0, 
+                    negative_slope=0.2, 
+                    num_agents=self.num_agents,
+                    n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                    num_heads=self.gat_encoder_num_heads,
+                    eps=1., 
+                    gnn_train_eps=self.gnn_train_eps,
+                    gnn_norm=self.gnn_norm,
+                    self_loop_type=1,
+                    average=True, 
+                    normalize=self.gat_encoder_normalize,
+                    device=device
+                )
         # sub-schedulers
         if not self.first_graph_complete:
             if self.use_gat_encoder:
@@ -127,30 +150,64 @@ class MAGIC_Actor(nn.Module):
                     weight_initialisation="default"
                 )
         # sub-processors
-        self.sub_processor1 = GraphAttention(
-            in_features=self.hidden_size, 
-            out_features=self.gat_hidden_size, 
-            dropout=0, 
-            negative_slope=0.2,
-            num_agents=self.num_agents, 
-            num_heads=self.gat_num_heads, 
-            self_loop_type=self.self_loop_type1, 
-            average=False, 
-            normalize=self.first_gat_normalize,
-            device=device
-        )  
-        self.sub_processor2 = GraphAttention(
-            in_features=self.gat_hidden_size * self.gat_num_heads, 
-            out_features=self.hidden_size, 
-            dropout=0, 
-            negative_slope=0.2,
-            num_agents=self.num_agents, 
-            num_heads=self.gat_num_heads_out, 
-            self_loop_type=self.self_loop_type2, 
-            average=True, 
-            normalize=self.second_gat_normalize,
-            device=device
-        )
+        if self.gat_architecture == 'gat':
+            self.sub_processor1 = GraphAttentionGAT(
+                in_features=self.hidden_size, 
+                out_features=self.gat_hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                num_heads=self.gat_num_heads, 
+                self_loop_type=self.self_loop_type1, 
+                average=False, 
+                normalize=self.first_gat_normalize,
+                device=device
+            )  
+            self.sub_processor2 = GraphAttentionGAT(
+                in_features=self.gat_hidden_size * self.gat_num_heads, 
+                out_features=self.hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                num_heads=self.gat_num_heads_out, 
+                self_loop_type=self.self_loop_type2, 
+                average=True, 
+                normalize=self.second_gat_normalize,
+                device=device
+            )
+        elif self.gat_architecture == 'gain':
+            self.sub_processor1 = GraphAttentionGAIN(
+                in_features=self.hidden_size, 
+                out_features=self.gat_hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                num_heads=self.gat_num_heads,
+                eps=1., 
+                gnn_train_eps=self.gnn_train_eps,
+                gnn_norm=self.gnn_norm, 
+                self_loop_type=self.self_loop_type1, 
+                average=False, 
+                normalize=self.first_gat_normalize,
+                device=device
+            )
+            self.sub_processor2 = GraphAttentionGAIN(
+                in_features=self.gat_hidden_size * self.gat_num_heads, 
+                out_features=self.hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                num_heads=self.gat_num_heads_out,
+                eps=1., 
+                gnn_train_eps=self.gnn_train_eps,
+                gnn_norm=self.gnn_norm, 
+                self_loop_type=self.self_loop_type2, 
+                average=True, 
+                normalize=self.second_gat_normalize,
+                device=device
+            )
         # message decoder
         if self.message_decoder:
             self.msg_decoder = nn.Linear(self.hidden_size, self.hidden_size)
@@ -251,6 +308,9 @@ class MAGIC_Actor(nn.Module):
         # [shape: (batch_size * num_agents, obs_dims)]
         obs = check(obs).to(**self.tpdv)
         batch_size = obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (batch_size * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (batch_size * num_agents, recurrent_N = 1, hidden_size)] --> 
         # [shape: (batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv).squeeze(1)
@@ -300,7 +360,10 @@ class MAGIC_Actor(nn.Module):
                 # masked complete adjacency [shape: (batch_size, num_agents, num_agents)]
                 adj_complete = self.get_complete_graph(agent_mask)
                 # gat encoder [shape: batch_size, num_agents, gat_encoder_out_size]
-                encoded_state1 = self.gat_encoder(comm, adj_complete)
+                if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                    encoded_state1 = self.gat_encoder(comm, adj_complete, batch)
+                else:
+                    encoded_state1 = self.gat_encoder(comm, adj_complete)
                 # scheduled adjacency [shape: (batch_size, num_agents, num_agents)] 
                 adj1 = self.sub_scheduler(self.sub_scheduler_mlp1, encoded_state1, agent_mask, self.directed)
             else:
@@ -311,7 +374,10 @@ class MAGIC_Actor(nn.Module):
             adj1 = self.get_complete_graph(agent_mask)
         # sub-processor 1 [shape: (batch_size, num_agents, hidden_size)] --> 
         # [shape: (batch_size, num_agents, gat_hidden_size * gat_num_heads)]
-        comm = F.elu(self.sub_processor1(comm, adj1))
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            comm = F.elu(self.sub_processor1(comm, adj1, batch))
+        else:
+            comm = F.elu(self.sub_processor1(comm, adj1))
 
         # sub-scheduler 2
         if self.learn_second_graph and not self.second_graph_complete:
@@ -320,7 +386,10 @@ class MAGIC_Actor(nn.Module):
                     # masked complete adjacency [shape: (batch_size, num_agents, num_agents)]
                     adj_complete = self.get_complete_graph(agent_mask)
                     # gat encoder [shape: batch_size, num_agents, gat_encoder_out_size]
-                    encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
+                    if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete, batch)
+                    else:
+                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
                 else:
                     # reuse encoded state from sub-scheduler 1 [shape: batch_size, num_agents, gat_encoder_out_size]
                     encoded_state2 = encoded_state1
@@ -337,7 +406,10 @@ class MAGIC_Actor(nn.Module):
             adj2 = self.get_complete_graph(agent_mask)
         # sub-processor 2 [shape: (batch_size, num_agents, gat_hidden_size * gat_num_heads)] --> 
         # [shape: (batch_size, num_agents, hidden_size)]
-        comm = self.sub_processor2(comm, adj2)
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            comm = self.sub_processor2(comm, adj2, batch)
+        else:
+            comm = self.sub_processor2(comm, adj2)
         
         # mask communication to dead agents [shape: (batch_size, num_agents, hidden_size)]
         comm = comm * agent_mask
@@ -376,6 +448,9 @@ class MAGIC_Actor(nn.Module):
         obs = check(obs).to(**self.tpdv)
         obs = obs.reshape(-1, self.data_chunk_length, self.obs_dims)
         mini_batch_size = obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (mini_batch_size * num_agents, recurrent_N = 1, hidden_size)] --> 
         # [shape: (mini_batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv).squeeze(1)
@@ -447,7 +522,10 @@ class MAGIC_Actor(nn.Module):
                     # masked complete adjacency [shape: (mini_batch_size, num_agents, num_agents)]
                     adj_complete = self.get_complete_graph(agent_mask)
                     # gat encoder [shape: mini_batch_size, num_agents, gat_encoder_out_size]
-                    encoded_state1 = self.gat_encoder(comm, adj_complete)
+                    if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                        encoded_state1 = self.gat_encoder(comm, adj_complete, batch)
+                    else:
+                        encoded_state1 = self.gat_encoder(comm, adj_complete)
                     # scheduled adjacency [shape: (mini_batch_size, num_agents, num_agents)] 
                     adj1 = self.sub_scheduler(self.sub_scheduler_mlp1, encoded_state1, agent_mask, self.directed)
                 else:
@@ -458,7 +536,10 @@ class MAGIC_Actor(nn.Module):
                 adj1 = self.get_complete_graph(agent_mask)
             # sub-processor 1 [shape: (mini_batch_size, num_agents, hidden_size)] --> 
             # [shape: (mini_batch_size, num_agents, gat_hidden_size * gat_num_heads)]
-            comm = F.elu(self.sub_processor1(comm, adj1))
+            if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                comm = F.elu(self.sub_processor1(comm, adj1, batch))
+            else:
+                comm = F.elu(self.sub_processor1(comm, adj1))
 
             # sub-scheduler 2
             if self.learn_second_graph and not self.second_graph_complete:
@@ -467,7 +548,10 @@ class MAGIC_Actor(nn.Module):
                         # masked complete adjacency [shape: (mini_batch_size, num_agents, num_agents)]
                         adj_complete = self.get_complete_graph(agent_mask)
                         # gat encoder [shape: mini_batch_size, num_agents, gat_encoder_out_size]
-                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
+                        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                            encoded_state2 = self.gat_encoder(comm_ori, adj_complete, batch)
+                        else:
+                            encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
                     else:
                         # reuse encoded state from sub-scheduler 1 
                         # [shape: mini_batch_size, num_agents, gat_encoder_out_size]
@@ -485,7 +569,10 @@ class MAGIC_Actor(nn.Module):
                 adj2 = self.get_complete_graph(agent_mask)
             # sub-processor 2 [shape: (mini_batch_size, num_agents, gat_hidden_size * gat_num_heads)] --> 
             # [shape: (mini_batch_size, num_agents, hidden_size)]
-            comm = self.sub_processor2(comm, adj2)
+            if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                comm = self.sub_processor2(comm, adj2, batch)
+            else:
+                comm = self.sub_processor2(comm, adj2)
             
             # mask communication to dead agents [shape: (mini_batch_size, num_agents, hidden_size)]
             comm = comm * agent_mask
@@ -545,6 +632,10 @@ class MAGIC_Critic(nn.Module):
         self.comm_init = args.magic_comm_init
         self.comm_mask_zero = args.magic_comm_mask_zero
         self.directed = args.magic_directed
+        self.gat_architecture = args.magic_gat_architecture
+        self.n_gnn_fc_layers = args.magic_n_gnn_fc_layers
+        self.gnn_train_eps = args.magic_gnn_train_eps
+        self.gnn_norm = args.magic_gnn_norm
 
         self._use_orthogonal = args.use_orthogonal
         self._recurrent_N = args.recurrent_N
@@ -570,18 +661,36 @@ class MAGIC_Critic(nn.Module):
             self.msg_encoder = nn.Linear(self.hidden_size, self.hidden_size)
         # gat encoder for scheduler
         if self.use_gat_encoder:
-            self.gat_encoder = GraphAttention(
-                in_features=self.hidden_size, 
-                out_features=self.gat_encoder_out_size, 
-                dropout=0, 
-                negative_slope=0.2,
-                num_agents=self.num_agents, 
-                num_heads=self.gat_encoder_num_heads, 
-                self_loop_type=1, 
-                average=True, 
-                normalize=self.gat_encoder_normalize,
-                device=device
-            )
+            if self.gat_architecture == 'gat':
+                self.gat_encoder = GraphAttentionGAT(
+                    in_features=self.hidden_size, 
+                    out_features=self.gat_encoder_out_size, 
+                    dropout=0, 
+                    negative_slope=0.2,
+                    num_agents=self.num_agents, 
+                    num_heads=self.gat_encoder_num_heads, 
+                    self_loop_type=1, 
+                    average=True, 
+                    normalize=self.gat_encoder_normalize,
+                    device=device
+                )
+            elif self.gat_architecture == 'gain':
+                self.gat_encoder = GraphAttentionGAIN(
+                    in_features=self.hidden_size,  
+                    out_features=self.gat_encoder_out_size, 
+                    dropout=0, 
+                    negative_slope=0.2, 
+                    num_agents=self.num_agents,
+                    n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                    num_heads=self.gat_encoder_num_heads,
+                    eps=1., 
+                    gnn_train_eps=self.gnn_train_eps,
+                    gnn_norm=self.gnn_norm,
+                    self_loop_type=1,
+                    average=True, 
+                    normalize=self.gat_encoder_normalize,
+                    device=device
+                )
         # sub-schedulers
         if not self.first_graph_complete:
             if self.use_gat_encoder:
@@ -626,30 +735,64 @@ class MAGIC_Critic(nn.Module):
                     weight_initialisation="default"
                 )
         # sub-processors
-        self.sub_processor1 = GraphAttention(
-            in_features=self.hidden_size, 
-            out_features=self.gat_hidden_size, 
-            dropout=0, 
-            negative_slope=0.2,
-            num_agents=self.num_agents, 
-            num_heads=self.gat_num_heads, 
-            self_loop_type=self.self_loop_type1, 
-            average=False, 
-            normalize=self.first_gat_normalize,
-            device=device
-        )  
-        self.sub_processor2 = GraphAttention(
-            in_features=self.gat_hidden_size * self.gat_num_heads, 
-            out_features=self.hidden_size, 
-            dropout=0, 
-            negative_slope=0.2,
-            num_agents=self.num_agents, 
-            num_heads=self.gat_num_heads_out, 
-            self_loop_type=self.self_loop_type2, 
-            average=True, 
-            normalize=self.second_gat_normalize,
-            device=device
-        )
+        if self.gat_architecture == 'gat':
+            self.sub_processor1 = GraphAttentionGAT(
+                in_features=self.hidden_size, 
+                out_features=self.gat_hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                num_heads=self.gat_num_heads, 
+                self_loop_type=self.self_loop_type1, 
+                average=False, 
+                normalize=self.first_gat_normalize,
+                device=device
+            )  
+            self.sub_processor2 = GraphAttentionGAT(
+                in_features=self.gat_hidden_size * self.gat_num_heads, 
+                out_features=self.hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                num_heads=self.gat_num_heads_out, 
+                self_loop_type=self.self_loop_type2, 
+                average=True, 
+                normalize=self.second_gat_normalize,
+                device=device
+            )
+        elif self.gat_architecture == 'gain':
+            self.sub_processor1 = GraphAttentionGAIN(
+                in_features=self.hidden_size, 
+                out_features=self.gat_hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                num_heads=self.gat_num_heads,
+                eps=1., 
+                gnn_train_eps=self.gnn_train_eps,
+                gnn_norm=self.gnn_norm, 
+                self_loop_type=self.self_loop_type1, 
+                average=False, 
+                normalize=self.first_gat_normalize,
+                device=device
+            )
+            self.sub_processor2 = GraphAttentionGAIN(
+                in_features=self.gat_hidden_size * self.gat_num_heads, 
+                out_features=self.hidden_size, 
+                dropout=0, 
+                negative_slope=0.2,
+                num_agents=self.num_agents, 
+                n_gnn_fc_layers=self.n_gnn_fc_layers, 
+                num_heads=self.gat_num_heads_out,
+                eps=1., 
+                gnn_train_eps=self.gnn_train_eps,
+                gnn_norm=self.gnn_norm, 
+                self_loop_type=self.self_loop_type2, 
+                average=True, 
+                normalize=self.second_gat_normalize,
+                device=device
+            )
         # message decoder
         if self.message_decoder:
             self.msg_decoder = nn.Linear(self.hidden_size, self.hidden_size)
@@ -753,6 +896,9 @@ class MAGIC_Critic(nn.Module):
         # [shape: (batch_size * num_agents, obs_dims)]
         cent_obs = check(cent_obs).to(**self.tpdv)
         batch_size = cent_obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (batch_size * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (batch_size * num_agents, recurrent_N = 1, hidden_size)] --> 
         # [shape: (batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv).squeeze(1)
@@ -799,7 +945,10 @@ class MAGIC_Critic(nn.Module):
                 # masked complete adjacency [shape: (batch_size, num_agents, num_agents)]
                 adj_complete = self.get_complete_graph(agent_mask)
                 # gat encoder [shape: batch_size, num_agents, gat_encoder_out_size]
-                encoded_state1 = self.gat_encoder(comm, adj_complete)
+                if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                    encoded_state1 = self.gat_encoder(comm, adj_complete, batch)
+                else:
+                    encoded_state1 = self.gat_encoder(comm, adj_complete)
                 # scheduled adjacency [shape: (batch_size, num_agents, num_agents)] 
                 adj1 = self.sub_scheduler(self.sub_scheduler_mlp1, encoded_state1, agent_mask, self.directed)
             else:
@@ -810,7 +959,10 @@ class MAGIC_Critic(nn.Module):
             adj1 = self.get_complete_graph(agent_mask)
         # sub-processor 1 [shape: (batch_size, num_agents, hidden_size)] --> 
         # [shape: (batch_size, num_agents, gat_hidden_size * gat_num_heads)]
-        comm = F.elu(self.sub_processor1(comm, adj1))
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            comm = F.elu(self.sub_processor1(comm, adj1, batch))
+        else:
+            comm = F.elu(self.sub_processor1(comm, adj1))
 
         # sub-scheduler 2
         if self.learn_second_graph and not self.second_graph_complete:
@@ -819,7 +971,10 @@ class MAGIC_Critic(nn.Module):
                     # masked complete adjacency [shape: (batch_size, num_agents, num_agents)]
                     adj_complete = self.get_complete_graph(agent_mask)
                     # gat encoder [shape: batch_size, num_agents, gat_encoder_out_size]
-                    encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
+                    if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete, batch)
+                    else:
+                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
                 else:
                     # reuse encoded state from sub-scheduler 1 [shape: batch_size, num_agents, gat_encoder_out_size]
                     encoded_state2 = encoded_state1
@@ -836,7 +991,10 @@ class MAGIC_Critic(nn.Module):
             adj2 = self.get_complete_graph(agent_mask)
         # sub-processor 2 [shape: (batch_size, num_agents, gat_hidden_size * gat_num_heads)] --> 
         # [shape: (batch_size, num_agents, hidden_size)]
-        comm = self.sub_processor2(comm, adj2)
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            comm = self.sub_processor2(comm, adj2, batch)
+        else:
+            comm = self.sub_processor2(comm, adj2)
         
         # mask communication to dead agents [shape: (batch_size, num_agents, hidden_size)]
         comm = comm * agent_mask
@@ -866,6 +1024,9 @@ class MAGIC_Critic(nn.Module):
         cent_obs = check(cent_obs).to(**self.tpdv)
         cent_obs = cent_obs.reshape(-1, self.data_chunk_length, self.obs_dims)
         mini_batch_size = cent_obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (mini_batch_size * num_agents, recurrent_N = 1, hidden_size)] --> 
         # [shape: (mini_batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv).squeeze(1)
@@ -919,7 +1080,10 @@ class MAGIC_Critic(nn.Module):
                     # masked complete adjacency [shape: (mini_batch_size, num_agents, num_agents)]
                     adj_complete = self.get_complete_graph(agent_mask)
                     # gat encoder [shape: mini_batch_size, num_agents, gat_encoder_out_size]
-                    encoded_state1 = self.gat_encoder(comm, adj_complete)
+                    if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                        encoded_state1 = self.gat_encoder(comm, adj_complete, batch)
+                    else:
+                        encoded_state1 = self.gat_encoder(comm, adj_complete)
                     # scheduled adjacency [shape: (mini_batch_size, num_agents, num_agents)] 
                     adj1 = self.sub_scheduler(self.sub_scheduler_mlp1, encoded_state1, agent_mask, self.directed)
                 else:
@@ -930,7 +1094,10 @@ class MAGIC_Critic(nn.Module):
                 adj1 = self.get_complete_graph(agent_mask)
             # sub-processor 1 [shape: (mini_batch_size, num_agents, hidden_size)] --> 
             # [shape: (mini_batch_size, num_agents, gat_hidden_size * gat_num_heads)]
-            comm = F.elu(self.sub_processor1(comm, adj1))
+            if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                comm = F.elu(self.sub_processor1(comm, adj1, batch))
+            else:
+                comm = F.elu(self.sub_processor1(comm, adj1))
 
             # sub-scheduler 2
             if self.learn_second_graph and not self.second_graph_complete:
@@ -939,7 +1106,10 @@ class MAGIC_Critic(nn.Module):
                         # masked complete adjacency [shape: (mini_batch_size, num_agents, num_agents)]
                         adj_complete = self.get_complete_graph(agent_mask)
                         # gat encoder [shape: mini_batch_size, num_agents, gat_encoder_out_size]
-                        encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
+                        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                            encoded_state2 = self.gat_encoder(comm_ori, adj_complete, batch)
+                        else:
+                            encoded_state2 = self.gat_encoder(comm_ori, adj_complete)
                     else:
                         # reuse encoded state from sub-scheduler 1 
                         # [shape: mini_batch_size, num_agents, gat_encoder_out_size]
@@ -957,7 +1127,10 @@ class MAGIC_Critic(nn.Module):
                 adj2 = self.get_complete_graph(agent_mask)
             # sub-processor 2 [shape: (mini_batch_size, num_agents, gat_hidden_size * gat_num_heads)] --> 
             # [shape: (mini_batch_size, num_agents, hidden_size)]
-            comm = self.sub_processor2(comm, adj2)
+            if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+                comm = self.sub_processor2(comm, adj2, batch)
+            else:
+                comm = self.sub_processor2(comm, adj2)
             
             # mask communication to dead agents [shape: (mini_batch_size, num_agents, hidden_size)]
             comm = comm * agent_mask

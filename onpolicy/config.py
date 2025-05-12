@@ -206,6 +206,14 @@ def get_config():
             Whether block the communication for MAGIC, (default: False)
         --magic_directed 
             Whether the communication graph is directed for MAGIC, (default: False)
+        --magic_gat_architecture
+            Architecture for attention based GNN layers in MAGIC from ['gat', 'gain'], (default: 'gat')
+        --magic_n_gnn_fc_layers <int>
+            Number of MLP layers for MLP in suitable GNN architecture ('gain'), (default: 2)
+        --magic_gnn_train_eps
+            Whether to train epsilon in suitable GNN architecture ('gain'), (default: False)
+        --magic_gnn_norm
+            Normalisation for GNN from ['none', 'graphnorm'], (default: 'none')
 
     Optimizer parameters:
         --lr <float>
@@ -405,6 +413,10 @@ def get_config():
     parser.add_argument('--magic_comm_init', default='uniform', type=str, help='How to initialise comm weights [uniform|zeros] for MAGIC', choices=["uniform", "zeros"])
     parser.add_argument('--magic_comm_mask_zero', action='store_true', default=False, help="Whether block the communication for MAGIC")
     parser.add_argument('--magic_directed', action='store_true', default=False, help='Whether the communication graph is directed for MAGIC')
+    parser.add_argument('--magic_gat_architecture', type=str, default='gat', choices=['gat', 'gain'], help="Architecture for attention based GNN layers in MAGIC")
+    parser.add_argument("--magic_n_gnn_fc_layers", type=int, default=2, help="Number of MLP layers for MLP in suitable GNN architecture ('gain')")
+    parser.add_argument("--magic_gnn_train_eps", action='store_true', default=False, help="Whether to train epsilon in suitable GNN architecture ('gain')")
+    parser.add_argument("--magic_gnn_norm", type=str, default='none', choices=['none', 'graphnorm'], help="Normalisation for GNN")
 
     # recurrent parameters
     parser.add_argument("--use_naive_recurrent_policy", action='store_true',

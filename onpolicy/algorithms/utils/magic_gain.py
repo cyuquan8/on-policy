@@ -141,7 +141,7 @@ class GraphAttentionGAIN(nn.Module):
         adj = adj.unsqueeze(-1)
         # attention (tensor): the matrix of coefficients used for the message aggregation 
         # [batch_size * N * N * num_heads]
-        attention = F.softmax(e, dim=2)
+        attention = torch.exp(F.log_softmax(e, dim=2)) 
         # the weights from agents that should not communicate (send messages) will be 0, the gradients from 
         # the communication graph will be preserved in this way
         # add epsilon as per GAIN

@@ -374,8 +374,11 @@ class MAGIC_Actor(nn.Module):
             adj1 = self.get_complete_graph(agent_mask)
         # sub-processor 1 [shape: (batch_size, num_agents, hidden_size)] --> 
         # [shape: (batch_size, num_agents, gat_hidden_size * gat_num_heads)]
-        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
-            comm = F.elu(self.sub_processor1(comm, adj1, batch))
+        if self.gat_architecture == "gain":
+            if self.gnn_norm == "graphnorm":
+                comm = self.sub_processor1(comm, adj1, batch)
+            else:
+                comm = self.sub_processor1(comm, adj1)
         else:
             comm = F.elu(self.sub_processor1(comm, adj1))
 

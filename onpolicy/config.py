@@ -166,6 +166,14 @@ def get_config():
     G2ANet parameters:
         --g2anet_gumbel_softmax_tau
             Tau value for gumbel softmax for G2ANet, (default: 1)
+        --g2anet_gat_architecture <str>
+            Architecture for GNN layers in G2ANet from ['default', 'gain'], (default: "default")
+        --g2anet_n_gnn_fc_layers <int>
+            Number of MLP layers for MLP in suitable GNN architecture ('gain'), (default: 2)
+        --g2anet_gnn_train_eps
+            Whether to train epsilon in suitable GNN architecture ('gain'), (default: False)
+        --g2anet_gnn_norm
+            Normalisation for GNN from ['none', 'graphnorm'], (default: 'none')
     
     MAGIC parameters:
         --magic_message_encoder
@@ -392,6 +400,10 @@ def get_config():
 
     # g2anet network parameters (use hidden_size in network parameters)
     parser.add_argument("--g2anet_gumbel_softmax_tau", type=float, default=1, help="Tau value for gumbel softmax for G2ANet")
+    parser.add_argument("--g2anet_gat_architecture", type=str, default='default', choices=['default', 'gain'], help="Architecture for GNN layers in G2ANet")
+    parser.add_argument("--g2anet_n_gnn_fc_layers", type=int, default=2, help="Number of MLP layers for MLP in suitable GNN architecture ('gain')")
+    parser.add_argument("--g2anet_gnn_train_eps", action='store_true', default=False, help="Whether to train epsilon in suitable GNN architecture ('gain')")
+    parser.add_argument("--g2anet_gnn_norm", type=str, default='none', choices=['none', 'graphnorm'], help="Normalisation for GNN")
 
     # magic network parameters (use hidden_size in network parameters)
     parser.add_argument('--magic_message_encoder', action='store_true', default=False, help='Whether use the message encoder for MAGIC')

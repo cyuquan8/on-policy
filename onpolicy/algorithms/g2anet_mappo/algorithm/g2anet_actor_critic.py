@@ -26,6 +26,10 @@ class G2ANet_Actor(nn.Module):
         self.data_chunk_length = args.data_chunk_length
         self.num_agents = args.num_agents
         self.gumbel_softmax_tau = args.g2anet_gumbel_softmax_tau
+        self.gat_architecture = args.g2anet_gat_architecture
+        self.n_gnn_fc_layers = args.g2anet_n_gnn_fc_layers
+        self.gnn_train_eps = args.g2anet_gnn_train_eps
+        self.gnn_norm = args.g2anet_gnn_norm
 
         self._gain = args.gain
         self._use_orthogonal = args.use_orthogonal
@@ -68,8 +72,23 @@ class G2ANet_Actor(nn.Module):
         )
         self.hard_encoder = nn.Linear(self.hidden_size * 2, 2)
         # soft attention
-        self.q = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-        self.k = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        if self.gat_architecture == 'default':
+            self.q = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+            self.k = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        elif self.gat_architecture == 'gain':
+            self.nn = NNLayers(
+                input_channels=self.hidden_size, 
+                block=MLPBlock, 
+                output_channels=[self.hidden_size for _ in range(self.n_gnn_fc_layers)],
+                norm_type=self.gnn_norm,
+            )
+            self.W = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+            self.a = nn.Linear(self.hidden_size, 1, bias=False)
+            if self.gnn_train_eps:
+                self.eps = torch.nn.Parameter(torch.ones(1))
+            else:
+                self.register_buffer('eps', torch.ones(1))
+            self.leakyrelu = nn.LeakyReLU(0.2)
         # decoder
         self.act = ACTLayer(action_space, self.hidden_size * 2, self._use_orthogonal, self._gain)
 
@@ -94,6 +113,9 @@ class G2ANet_Actor(nn.Module):
         # [shape: (batch_size * num_agents, obs_dims)]
         obs = check(obs).to(**self.tpdv)
         batch_size = obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (batch_size * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (batch_size * num_agents, recurrent_N, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv)
         lstm_cell_states = check(lstm_cell_states).to(**self.tpdv)
@@ -165,30 +187,55 @@ class G2ANet_Actor(nn.Module):
 
         # soft attention mechanism to compute soft weight (weighting feature vectors of communicating agents)
 
-        # h --> q, k [shape: (batch_size * num_agents, 1, hidden_size)]
-        q = self.q(h)
-        k = self.k(h)
-        # q [shape: (batch_size, num_agents, num_agents, hidden_size)] 
-        q = q.reshape(batch_size, self.num_agents, 1, self.hidden_size)
-        # repeat key hidden state for each agent j
-        k = k.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
-        # mask to remove instances of where i == j in key hidden state
-        # [shape: (batch_size, num_agents, num_agents, hidden_size)]
-        mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
-                                               .unsqueeze(-1)\
-                                               .repeat(batch_size, 1, 1, self.hidden_size)\
-                                               .to(**self.tpdv) 
-        # mask k and transpose [shape: (batch_size, num_agents, num_agents - 1, hidden_size)] --> 
-        # [shape: (batch_size, num_agents, hidden_size, num_agents - 1)]
-        k = k[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size).transpose(2, 3)
-        # dot product between query (agent i) and key for each agent j != i for each agent i
-        # q, k --> soft_weights [shape: (batch_size, num_agents, 1, num_agents - 1)] --> 
-        # [shape: (batch_size, num_agents, num_agents - 1)]
-        soft_weights = torch.matmul(q, k).squeeze(2) 
-        # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
-        # [shape: (batch_size, num_agents, num_agents - 1, 1)]
-        soft_weights = soft_weights / math.sqrt(self.hidden_size)
-        soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+        if self.gat_architecture == 'default':
+            # h --> q, k [shape: (batch_size * num_agents, 1, hidden_size)]
+            q = self.q(h)
+            k = self.k(h)
+            # q [shape: (batch_size, num_agents, num_agents, hidden_size)] 
+            q = q.reshape(batch_size, self.num_agents, 1, self.hidden_size)
+            # repeat key hidden state for each agent j
+            k = k.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+            # mask to remove instances of where i == j in key hidden state
+            # [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                .unsqueeze(-1)\
+                                                .repeat(batch_size, 1, 1, self.hidden_size)\
+                                                .to(**self.tpdv) 
+            # mask k and transpose [shape: (batch_size, num_agents, num_agents - 1, hidden_size)] --> 
+            # [shape: (batch_size, num_agents, hidden_size, num_agents - 1)]
+            k = k[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size).transpose(2, 3)
+            # dot product between query (agent i) and key for each agent j != i for each agent i
+            # q, k --> soft_weights [shape: (batch_size, num_agents, 1, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1)]
+            soft_weights = torch.matmul(q, k).squeeze(2) 
+            # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1, 1)]
+            soft_weights = soft_weights / math.sqrt(self.hidden_size)
+            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+        elif self.gat_architecture == 'gain':
+            # h --> h_ [shape: (batch_size * num_agents, 1, hidden_size)]
+            h_ = self.W(h)
+            # q, k, e [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            # GATv2 attention mechanism
+            q = h_.reshape(batch_size, self.num_agents, 1, self.hidden_size).repeat(1, 1, self.num_agents, 1)
+            k = h_.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+            e = q + k
+            e = self.leakyrelu(e)
+            # mask to remove instances of where i == j in key hidden state
+            # [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                .unsqueeze(-1)\
+                                                .repeat(batch_size, 1, 1, self.hidden_size)\
+                                                .to(**self.tpdv)
+            # mask e [shape: (batch_size, num_agents, num_agents - 1, hidden_size)]
+            e = e[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)
+            # soft_weights [shape: (batch_size, num_agents, num_agents - 1, 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1)]
+            soft_weights = self.a(e).squeeze(3)
+            # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1, 1)]
+            soft_weights = soft_weights / math.sqrt(self.hidden_size)
+            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1) + self.eps
 
         # hidden state for each agent j != i for each agent i
         # h_hard_2 [shape: (batch_size, num_agents, num_agents, hidden_size)] --> 
@@ -199,6 +246,11 @@ class G2ANet_Actor(nn.Module):
         # summation over neighbours (each agent j != i for each agent i) 
         # x [shape: (batch_size, num_agents, hidden_size)] --> [shape: (batch_size * num_agents, hidden_size)]
         x = x.sum(dim=2).reshape(batch_size * self.num_agents, self.hidden_size)
+        if self.gat_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                x = self.nn(x, batch)
+            elif self.gnn_norm == 'none':
+                x = self.nn(x)
         # [shape: (batch_size * num_agents, hidden_size * 2)] -->
         # actions, action_log_probs [shape: (batch_size * num_agents, act_dims)]
         actions, action_log_probs = self.act(torch.cat((h.squeeze(1), x), dim=-1), available_actions, deterministic)
@@ -227,6 +279,9 @@ class G2ANet_Actor(nn.Module):
         obs = check(obs).to(**self.tpdv)
         obs = obs.reshape(-1, self.data_chunk_length, self.obs_dims)
         mini_batch_size = obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (mini_batch_size * num_agents, recurrent_N, hidden_size)] --> 
         # [shape: (recurrent_N, mini_batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv)
@@ -316,31 +371,56 @@ class G2ANet_Actor(nn.Module):
 
             # soft attention mechanism to compute soft weight (weighting feature vectors of communicating agents)
 
-            # h --> q, k [shape: (mini_batch_size * num_agents, 1, hidden_size)]
-            q = self.q(h)
-            k = self.k(h)
-            # q [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] 
-            q = q.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size)
-            # repeat key hidden state for each agent j
-            k = k.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
-            # mask to remove instances of where i == j in key hidden state
-            # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
-            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
-                                                   .unsqueeze(-1)\
-                                                   .repeat(mini_batch_size, 1, 1, self.hidden_size)\
-                                                   .to(**self.tpdv) 
-            # mask k and transpose [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)] --> 
-            # [shape: (mini_batch_size, num_agents, hidden_size, num_agents - 1)]
-            k = k[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)\
-                            .transpose(2, 3)
-            # dot product between query (agent i) and key for each agent j != i for each agent i
-            # q, k --> soft_weights [shape: (mini_batch_size, num_agents, 1, num_agents - 1)] --> 
-            # [shape: (mini_batch_size, num_agents, num_agents - 1)]
-            soft_weights = torch.matmul(q, k).squeeze(2) 
-            # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
-            # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
-            soft_weights = soft_weights / math.sqrt(self.hidden_size)
-            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+            if self.gat_architecture == 'default':
+                # h --> q, k [shape: (mini_batch_size * num_agents, 1, hidden_size)]
+                q = self.q(h)
+                k = self.k(h)
+                # q [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] 
+                q = q.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size)
+                # repeat key hidden state for each agent j
+                k = k.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+                # mask to remove instances of where i == j in key hidden state
+                # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                    .unsqueeze(-1)\
+                                                    .repeat(mini_batch_size, 1, 1, self.hidden_size)\
+                                                    .to(**self.tpdv) 
+                # mask k and transpose [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)] --> 
+                # [shape: (mini_batch_size, num_agents, hidden_size, num_agents - 1)]
+                k = k[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)\
+                                .transpose(2, 3)
+                # dot product between query (agent i) and key for each agent j != i for each agent i
+                # q, k --> soft_weights [shape: (mini_batch_size, num_agents, 1, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1)]
+                soft_weights = torch.matmul(q, k).squeeze(2) 
+                # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
+                soft_weights = soft_weights / math.sqrt(self.hidden_size)
+                soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+            elif self.gat_architecture == 'gain':
+                # h --> h_ [shape: (mini_batch_size * num_agents, 1, hidden_size)]
+                h_ = self.W(h)
+                # q, k, e [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                # GATv2 attention mechanism
+                q = h_.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size).repeat(1, 1, self.num_agents, 1)
+                k = h_.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+                e = q + k
+                e = self.leakyrelu(e)
+                # mask to remove instances of where i == j in key hidden state
+                # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                    .unsqueeze(-1)\
+                                                    .repeat(mini_batch_size, 1, 1, self.hidden_size)\
+                                                    .to(**self.tpdv)
+                # mask e [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)]
+                e = e[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)
+                # soft_weights [shape: (mini_batch_size, num_agents, num_agents - 1, 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1)]
+                soft_weights = self.a(e).squeeze(3) 
+                # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
+                soft_weights = soft_weights / math.sqrt(self.hidden_size)
+                soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1) + self.eps
 
             # hidden state for each agent j != i for each agent i
             # h_hard_2 [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] --> 
@@ -352,6 +432,11 @@ class G2ANet_Actor(nn.Module):
             # x [shape: (mini_batch_size, num_agents, hidden_size)] --> 
             # [shape: (mini_batch_size * num_agents, hidden_size)]
             x = x.sum(dim=2).reshape(mini_batch_size * self.num_agents, self.hidden_size)
+            if self.gat_architecture == 'gain':
+                if self.gnn_norm == 'graphnorm':
+                    x = self.nn(x, batch)
+                elif self.gnn_norm == 'none':
+                    x = self.nn(x)
             # [shape: (mini_batch_size * num_agents, hidden_size * 2)] -->
             # [shape: (mini_batch_size * num_agents, act_dims)], [shape: () == scalar] 
             action_log_probs, dist_entropy = self.act.evaluate_actions(torch.cat((h.squeeze(1), x), dim=-1),
@@ -382,6 +467,10 @@ class G2ANet_Critic(nn.Module):
         self.data_chunk_length = args.data_chunk_length
         self.num_agents = args.num_agents
         self.gumbel_softmax_tau = args.g2anet_gumbel_softmax_tau
+        self.gat_architecture = args.g2anet_gat_architecture
+        self.n_gnn_fc_layers = args.g2anet_n_gnn_fc_layers
+        self.gnn_train_eps = args.g2anet_gnn_train_eps
+        self.gnn_norm = args.g2anet_gnn_norm
 
         self._use_orthogonal = args.use_orthogonal
         self._recurrent_N = args.recurrent_N
@@ -423,8 +512,23 @@ class G2ANet_Critic(nn.Module):
         )
         self.hard_encoder = nn.Linear(self.hidden_size * 2, 2)
         # soft attention
-        self.q = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-        self.k = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        if self.gat_architecture == 'default':
+            self.q = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+            self.k = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+        elif self.gat_architecture == 'gain':
+            self.nn = NNLayers(
+                input_channels=self.hidden_size, 
+                block=MLPBlock, 
+                output_channels=[self.hidden_size for _ in range(self.n_gnn_fc_layers)],
+                norm_type=self.gnn_norm,
+            )
+            self.W = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
+            self.a = nn.Linear(self.hidden_size, 1, bias=False)
+            if self.gnn_train_eps:
+                self.eps = torch.nn.Parameter(torch.ones(1))
+            else:
+                self.register_buffer('eps', torch.ones(1))
+            self.leakyrelu = nn.LeakyReLU(0.2)
 
         def init_(m):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0))
@@ -452,6 +556,9 @@ class G2ANet_Critic(nn.Module):
         # [shape: (batch_size * num_agents, obs_dims)]
         cent_obs = check(cent_obs).to(**self.tpdv)
         batch_size = cent_obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (batch_size * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (batch_size * num_agents, recurrent_N, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv)
         lstm_cell_states = check(lstm_cell_states).to(**self.tpdv)
@@ -520,30 +627,55 @@ class G2ANet_Critic(nn.Module):
 
         # soft attention mechanism to compute soft weight (weighting feature vectors of communicating agents)
 
-        # h --> q, k [shape: (batch_size * num_agents, 1, hidden_size)]
-        q = self.q(h)
-        k = self.k(h)
-        # q [shape: (batch_size, num_agents, num_agents, hidden_size)] 
-        q = q.reshape(batch_size, self.num_agents, 1, self.hidden_size)
-        # repeat key hidden state for each agent j
-        k = k.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
-        # mask to remove instances of where i == j in key hidden state
-        # [shape: (batch_size, num_agents, num_agents, hidden_size)]
-        mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
-                                               .unsqueeze(-1)\
-                                               .repeat(batch_size, 1, 1, self.hidden_size)\
-                                               .to(**self.tpdv) 
-        # mask k and transpose [shape: (batch_size, num_agents, num_agents - 1, hidden_size)] --> 
-        # [shape: (batch_size, num_agents, hidden_size, num_agents - 1)]
-        k = k[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size).transpose(2, 3)
-        # dot product between query (agent i) and key for each agent j != i for each agent i
-        # q, k --> soft_weights [shape: (batch_size, num_agents, 1, num_agents - 1)] --> 
-        # [shape: (batch_size, num_agents, num_agents - 1)]
-        soft_weights = torch.matmul(q, k).squeeze(2) 
-        # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
-        # [shape: (batch_size, num_agents, num_agents - 1, 1)]
-        soft_weights = soft_weights / math.sqrt(self.hidden_size)
-        soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+        if self.gat_architecture == 'default':
+            # h --> q, k [shape: (batch_size * num_agents, 1, hidden_size)]
+            q = self.q(h)
+            k = self.k(h)
+            # q [shape: (batch_size, num_agents, num_agents, hidden_size)] 
+            q = q.reshape(batch_size, self.num_agents, 1, self.hidden_size)
+            # repeat key hidden state for each agent j
+            k = k.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+            # mask to remove instances of where i == j in key hidden state
+            # [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                .unsqueeze(-1)\
+                                                .repeat(batch_size, 1, 1, self.hidden_size)\
+                                                .to(**self.tpdv) 
+            # mask k and transpose [shape: (batch_size, num_agents, num_agents - 1, hidden_size)] --> 
+            # [shape: (batch_size, num_agents, hidden_size, num_agents - 1)]
+            k = k[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size).transpose(2, 3)
+            # dot product between query (agent i) and key for each agent j != i for each agent i
+            # q, k --> soft_weights [shape: (batch_size, num_agents, 1, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1)]
+            soft_weights = torch.matmul(q, k).squeeze(2) 
+            # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1, 1)]
+            soft_weights = soft_weights / math.sqrt(self.hidden_size)
+            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+        elif self.gat_architecture == 'gain':
+            # h --> h_ [shape: (batch_size * num_agents, 1, hidden_size)]
+            h_ = self.W(h)
+            # q, k, e [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            # GATv2 attention mechanism
+            q = h_.reshape(batch_size, self.num_agents, 1, self.hidden_size).repeat(1, 1, self.num_agents, 1)
+            k = h_.reshape(batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+            e = q + k
+            e = self.leakyrelu(e)
+            # mask to remove instances of where i == j in key hidden state
+            # [shape: (batch_size, num_agents, num_agents, hidden_size)]
+            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                .unsqueeze(-1)\
+                                                .repeat(batch_size, 1, 1, self.hidden_size)\
+                                                .to(**self.tpdv)
+            # mask e [shape: (batch_size, num_agents, num_agents - 1, hidden_size)]
+            e = e[mask == 1].reshape(batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)
+            # soft_weights [shape: (batch_size, num_agents, num_agents - 1, 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1)]
+            soft_weights = self.a(e).squeeze(3) 
+            # scale soft_weights and softmax [shape: (batch_size, num_agents, num_agents - 1)] --> 
+            # [shape: (batch_size, num_agents, num_agents - 1, 1)]
+            soft_weights = soft_weights / math.sqrt(self.hidden_size)
+            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1) + self.eps
 
         # hidden state for each agent j != i for each agent i
         # h_hard_2 [shape: (batch_size, num_agents, num_agents, hidden_size)] --> 
@@ -554,6 +686,11 @@ class G2ANet_Critic(nn.Module):
         # summation over neighbours (each agent j != i for each agent i) 
         # x [shape: (batch_size, num_agents, hidden_size)] --> [shape: (batch_size * num_agents, hidden_size)]
         x = x.sum(dim=2).reshape(batch_size * self.num_agents, self.hidden_size)
+        if self.gat_architecture == 'gain':
+            if self.gnn_norm == 'graphnorm':
+                x = self.nn(x, batch)
+            elif self.gnn_norm == 'none':
+                x = self.nn(x)
         # [shape: (batch_size * num_agents, hidden_size * 2)] --> values [shape: (batch_size * num_agents, 1)]
         values = self.v_out(torch.cat((h.squeeze(1), x), dim=-1))
 
@@ -575,6 +712,9 @@ class G2ANet_Critic(nn.Module):
         cent_obs = check(cent_obs).to(**self.tpdv)
         cent_obs = cent_obs.reshape(-1, self.data_chunk_length, self.obs_dims)
         mini_batch_size = cent_obs.shape[0] // self.num_agents
+        # obtain batch, [shape: (mini_batch_size * data_chunk_length * num_agents)]
+        if self.gat_architecture == 'gain' and self.gnn_norm == 'graphnorm':
+            batch = torch.arange(mini_batch_size).repeat_interleave(self.num_agents).to(self.tpdv['device'])
         # [shape: (mini_batch_size * num_agents, recurrent_N, hidden_size)] --> 
         # [shape: (recurrent_N, mini_batch_size * num_agents, hidden_size)]
         lstm_hidden_states = check(lstm_hidden_states).to(**self.tpdv)
@@ -649,31 +789,56 @@ class G2ANet_Critic(nn.Module):
 
             # soft attention mechanism to compute soft weight (weighting feature vectors of communicating agents)
 
-            # h --> q, k [shape: (mini_batch_size * num_agents, 1, hidden_size)]
-            q = self.q(h)
-            k = self.k(h)
-            # q [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] 
-            q = q.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size)
-            # repeat key hidden state for each agent j
-            k = k.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
-            # mask to remove instances of where i == j in key hidden state
-            # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
-            mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
-                                                   .unsqueeze(-1)\
-                                                   .repeat(mini_batch_size, 1, 1, self.hidden_size)\
-                                                   .to(**self.tpdv) 
-            # mask k and transpose [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)] --> 
-            # [shape: (mini_batch_size, num_agents, hidden_size, num_agents - 1)]
-            k = k[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)\
-                            .transpose(2, 3)
-            # dot product between query (agent i) and key for each agent j != i for each agent i
-            # q, k --> soft_weights [shape: (mini_batch_size, num_agents, 1, num_agents - 1)] --> 
-            # [shape: (mini_batch_size, num_agents, num_agents - 1)]
-            soft_weights = torch.matmul(q, k).squeeze(2) 
-            # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
-            # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
-            soft_weights = soft_weights / math.sqrt(self.hidden_size)
-            soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+            if self.gat_architecture == 'default':
+                # h --> q, k [shape: (mini_batch_size * num_agents, 1, hidden_size)]
+                q = self.q(h)
+                k = self.k(h)
+                # q [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] 
+                q = q.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size)
+                # repeat key hidden state for each agent j
+                k = k.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+                # mask to remove instances of where i == j in key hidden state
+                # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                    .unsqueeze(-1)\
+                                                    .repeat(mini_batch_size, 1, 1, self.hidden_size)\
+                                                    .to(**self.tpdv) 
+                # mask k and transpose [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)] --> 
+                # [shape: (mini_batch_size, num_agents, hidden_size, num_agents - 1)]
+                k = k[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)\
+                                .transpose(2, 3)
+                # dot product between query (agent i) and key for each agent j != i for each agent i
+                # q, k --> soft_weights [shape: (mini_batch_size, num_agents, 1, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1)]
+                soft_weights = torch.matmul(q, k).squeeze(2) 
+                # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
+                soft_weights = soft_weights / math.sqrt(self.hidden_size)
+                soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1)
+            elif self.gat_architecture == 'gain':
+                # h --> h_ [shape: (mini_batch_size * num_agents, 1, hidden_size)]
+                h_ = self.W(h)
+                # q, k, e [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                # GATv2 attention mechanism
+                q = h_.reshape(mini_batch_size, self.num_agents, 1, self.hidden_size).repeat(1, 1, self.num_agents, 1)
+                k = h_.reshape(mini_batch_size, 1, self.num_agents, self.hidden_size).repeat(1, self.num_agents, 1, 1)
+                e = q + k
+                e = self.leakyrelu(e)
+                # mask to remove instances of where i == j in key hidden state
+                # [shape: (mini_batch_size, num_agents, num_agents, hidden_size)]
+                mask = (1 - torch.eye(self.num_agents)).unsqueeze(0)\
+                                                    .unsqueeze(-1)\
+                                                    .repeat(mini_batch_size, 1, 1, self.hidden_size)\
+                                                    .to(**self.tpdv)
+                # mask e [shape: (mini_batch_size, num_agents, num_agents - 1, hidden_size)]
+                e = e[mask == 1].reshape(mini_batch_size, self.num_agents, self.num_agents - 1, self.hidden_size)
+                # soft_weights [shape: (mini_batch_size, num_agents, num_agents - 1, 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1)]
+                soft_weights = self.a(e).squeeze(3) 
+                # scale soft_weights and softmax [shape: (mini_batch_size, num_agents, num_agents - 1)] --> 
+                # [shape: (mini_batch_size, num_agents, num_agents - 1, 1)]
+                soft_weights = soft_weights / math.sqrt(self.hidden_size)
+                soft_weights = nn.functional.softmax(soft_weights, dim=-1).unsqueeze(-1) + self.eps
 
             # hidden state for each agent j != i for each agent i
             # h_hard_2 [shape: (mini_batch_size, num_agents, num_agents, hidden_size)] --> 
@@ -685,6 +850,11 @@ class G2ANet_Critic(nn.Module):
             # x [shape: (mini_batch_size, num_agents, hidden_size)] --> 
             # [shape: (mini_batch_size * num_agents, hidden_size)]
             x = x.sum(dim=2).reshape(mini_batch_size * self.num_agents, self.hidden_size)
+            if self.gat_architecture == 'gain':
+                if self.gnn_norm == 'graphnorm':
+                    x = self.nn(x, batch)
+                elif self.gnn_norm == 'none':
+                    x = self.nn(x)
             # [shape: (mini_batch_size * num_agents, hidden_size * 2)] --> 
             # values [shape: (mini_batch_size * num_agents, 1)]
             values = self.v_out(torch.cat((h.squeeze(1), x), dim=-1))

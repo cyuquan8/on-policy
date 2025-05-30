@@ -18,10 +18,14 @@ eval_interval=10
 eval_episodes=32
 
 g2anet_gumbel_softmax_tau=0.01
+g2anet_gat_architecture="default"
+g2anet_n_gnn_fc_layers=2
+g2anet_gnn_norm="none"
 hidden_size=128
 recurrent_N=1
 
-exp="g2anet_gumbel_softmax_tau_${g2anet_gumbel_softmax_tau}_\
+exp="g2anet_gat_architecture_${g2anet_gat_architecture}_\
+gumbel_softmax_tau_${g2anet_gumbel_softmax_tau}_\
 hidden_size_${hidden_size}_\
 recurrent_N_${recurrent_N}_\
 ep_len_${episode_length}_\
@@ -42,6 +46,10 @@ do
     --ppo_epoch ${ppo_epoch} --clip_param ${clip_param} --eval_interval ${eval_interval}\
     --eval_episodes ${eval_episodes} --use_value_active_masks --use_eval\
     --g2anet_gumbel_softmax_tau ${g2anet_gumbel_softmax_tau}\
+    --g2anet_gat_architecture ${g2anet_gat_architecture}\
+    --g2anet_n_gnn_fc_layers ${g2anet_n_gnn_fc_layers}\
+    --g2anet_gnn_norm ${g2anet_gnn_norm}\
     --hidden_size ${hidden_size}\
-    --recurrent_N ${recurrent_N}\ 
+    --recurrent_N ${recurrent_N}\
+    --g2anet_gnn_train_eps
 done

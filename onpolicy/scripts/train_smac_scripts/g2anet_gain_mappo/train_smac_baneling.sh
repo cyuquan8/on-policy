@@ -18,9 +18,9 @@ eval_interval=10
 eval_episodes=32
 
 g2anet_gumbel_softmax_tau=0.01
-g2anet_gat_architecture="default"
+g2anet_gat_architecture="gain"
 g2anet_n_gnn_fc_layers=2
-g2anet_gnn_norm="none"
+g2anet_gnn_norm="graphnorm"
 hidden_size=128
 recurrent_N=1
 
